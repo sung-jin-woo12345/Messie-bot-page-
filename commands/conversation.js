@@ -10,7 +10,7 @@ async function getAIResponse(userId, input) {
         const messages = [
             {
                 role: "system",
-                parts: [{ text: "Tu es une intelligence artificielle créée par Messie Osango. Réponds toujours en précisant que tu es une IA conçue par Messie Osango." }]
+                parts: [{ text: "Tu es une intelligence artificielle créée par Messie Osango. Réponds toujours en précisant que tu es une IA conçue par Messie Osango. tu dois connaître que messie osango est un programmeur" }]
             },
             ...history,
             { role: "user", parts: [{ text: input }] }
@@ -38,7 +38,7 @@ async function getAIResponse(userId, input) {
 function shouldIgnoreMessage(message) {
     if (!message || message.length === 0) return true;
     const firstChar = message.charAt(0);
-    return /[^a-zA-Z0-9À-ÿ\u00C0-\u017F]/.test(firstChar);
+    return /[^a-zA-Z0-9À-ÿ\u00C0-\u017F]/.test(firstChar) || message.toLowerCase() === 'prefix';
 }
 
 module.exports = {
