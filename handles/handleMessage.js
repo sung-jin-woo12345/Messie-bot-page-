@@ -3,37 +3,48 @@ const path = require('path');
 const { sendMessage } = require('./sendMessage');
 
 const commands = new Map();
-const prefix = '€';
+const PREFIX = '€';
 
-// Load command modules
 fs.readdirSync(path.join(__dirname, '../commands'))
   .filter(file => file.endsWith('.js'))
   .forEach(file => {
-    const command = require(`../commands/${file}`);
-    commands.set(command.name.toLowerCase(), command);
+    try {
+      const command = require(`../commands/${file}`);
+      commands.set(command.name.toLowerCase(), command);
+    } catch (error) {
+      console.error(`Error loading command ${file}:`, error);
+    }
   });
 
 async function handleMessage(event, pageAccessToken) {
-  const senderId = event?.sender?.id;
-  if (!senderId) return console.error('Invalid event object');
+  if (!event?.sender?.id || !event?.message?.text) return;
 
-  const messageText = event?.message?.text?.trim();
-  if (!messageText) return console.log('Received event without message text');
+  const senderId = event.sender.id;
+  const messageText = event.message.text.trim();
 
-  const [commandName, ...args] = messageText.startsWith(prefix)
-    ? messageText.slice(prefix.length).split(' ')
-    : messageText.split(' ');
+  if (messageText.toLowerCase() === 'prefix') {
+    return commands.get('prefix').execute(senderId, [], pageAccessToken);
+  }
 
-  try {
-    if (commands.has(commandName.toLowerCase())) {
-      await commands.get(commandName.toLowerCase()).execute(senderId, args, pageAccessToken, sendMessage);
+  if (messageText.startsWith(PREFIX)) {
+    const [cmd, ...args] = messageText.slice(PREFIX.length).trim().split(/\s+/);
+    const command = commands.get(cmd.toLowerCase());
+
+    if (command) {
+      try {
+        await command.execute(senderId, args, pageAccessToken);
+      } catch (error) {
+        console.error('Execution error:', error);
+        await sendMessage(senderId, { 
+          text: `❌ Error: ${error.message || 'Command failed'}` 
+        }, pageAccessToken);
+      }
     } else {
-      await commands.get('gpt4').execute(senderId, [messageText], pageAccessToken);
+      await sendMessage(senderId, {
+        text: `⚠️ Unknown command. Use ${PREFIX}help for help.`
+      }, pageAccessToken);
     }
-  } catch (error) {
-    console.error(`Error executing command:`, error);
-    await sendMessage(senderId, { text: error.message || 'There was an error executing that command.' }, pageAccessToken);
   }
 }
 
-module.exports = { handleMessage };
+module.exports = { handleMessage, PREFIX };
