@@ -4,9 +4,9 @@ const { sendMessage } = require('../handles/sendMessage');
 
 module.exports = {
   name: 'help',
-  description: 'Afficher les commandes disponibles',
+  description: 'Afficher les commandes ,
   usage: 'help\nhelp [command name]',
-  author: 'messie osango',
+  author: 'messie osango ',
   execute(senderId, args, pageAccessToken) {
     const commandsDir = path.join(__dirname, '../commands');
     const commandFiles = fs.readdirSync(commandsDir).filter(file => file.endsWith('.js'));
@@ -20,7 +20,8 @@ module.exports = {
 
       if (commandFile) {
         const command = require(path.join(commandsDir, commandFile));
-        const commandDetails = `╭⌾⋅ ミ✘.𝙼𝙴𝚂𝚂𝙸𝙴〈 ⋅⌾╮
+        const commandDetails = `
+╭⌾⋅ ミ✘.𝙼𝙴𝚂𝚂𝙸𝙴〈 ⋅⌾╮
 │
 │   𝙽𝚊𝚖𝚎: ${command.name}
 │   𝙳𝚎𝚜𝚌: ${command.description}
@@ -32,24 +33,23 @@ module.exports = {
         
         sendMessage(senderId, { text: commandDetails }, pageAccessToken);
       } else {
-        sendMessage(senderId, { text: `Command "${commandName}" not found.` }, pageAccessToken);
+        sendMessage(senderId, { text: `╭⌾⋅ ミ✘.𝙴𝚁𝚁𝙾𝚁〈 ⋅⌾╮\n│\n│   Command not found!\n│\n╰─────⌾⋅ ⌾ ⋅⌾─────╯` }, pageAccessToken);
       }
       return;
     }
 
     const commands = commandFiles.map(file => {
       const command = require(path.join(commandsDir, file));
-      return `│   ✧ ${command.name}`;
+      return `│   ✦ ${command.name}`;
     });
 
-    const helpMessage = `╭⌾⋅ ミ✘.𝙼𝙴𝚂𝚂𝙸𝙴〈 ⋅⌾╮
+    const helpMessage = `
+╭⌾⋅ ミ✘.𝙲𝙾𝚖𝚖𝚊𝚗𝚍𝚜〈 ⋅⌾╮
 │
 ${commands.join('\n')}
 │
-│   𝚃𝚢𝚙𝚎: -help [𝚌𝚖𝚍]
-│   𝚏𝚘𝚛 𝚍𝚎𝚝𝚊𝚒𝚕𝚜
-│
-│   ┐('～\`;)┌
+│   Type: help [command]
+│   for more details
 │
 ╰─────⌾⋅ ⌾ ⋅⌾─────╯`;
 
