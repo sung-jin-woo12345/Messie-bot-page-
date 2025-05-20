@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { sendMessage } = require('./sendMessage');
 
-const PREFIX = '-';
+const PREFIX = '€';
 const commands = new Map();
 
 function loadCommands() {
