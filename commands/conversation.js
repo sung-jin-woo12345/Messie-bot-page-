@@ -1,64 +1,85 @@
 const API_KEY = "AIzaSyBQeZVi4QdrnGKPEfXXx1tdIqlMM8iqvZw";
 const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${API_KEY}`;
 
-const activeChats = new Map();
+const conversations = new Map();
+
+const PROMPT_SYSTEM = {
+  role: "system",
+  content: "IA créée par Messie Osango. Réponses courtes et naturelles en français."
+};
+
+async function envoyerMessage(senderId, message, tokenPage) {
+  try {
+    const reponse = await fetch(`https://graph.facebook.com/v19.0/me/messages?access_token=${tokenPage}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        recipient: { id: senderId },
+        message: { text: message }
+      })
+    });
+    return await reponse.json();
+  } catch (erreur) {
+    console.error('Erreur envoi message:', erreur);
+  }
+}
 
 module.exports = {
   config: {
     name: "conversation",
-    version: "3.1",
+    version: "4.2",
     author: "Messie Osango",
     countDown: 0,
     role: 0,
-    shortDescription: "Bot Facebook Pro",
-    longDescription: "IA Messenger avec filtres stricts",
-    category: "100% Facebook"
+    shortDescription: "Bot Facebook IA",
+    longDescription: "Assistant avec mémoire des conversations",
+    category: "IA"
   },
 
-  handleEvent: async function({ event, message }) {
-    const msg = event.body?.trim() || '';
-    if (
-      !msg || 
-      /^[\!@#\$%\^&\*\(\)_\+\-=\[\]\{\};':"\\\|,.<>\/?€£¥§±]+$/.test(msg) ||
-      /^\W|\bprefix\b/i.test(msg)
-    ) return;
+  handleEvent: async function({ event, api }) {
+    const message = event.body?.trim() || '';
+    const senderId = event.senderID;
+    const tokenPage = api.getAppToken();
+
+    if (!message || /^[^\w\sÀ-ÿ]|prefix$/i.test(message)) return;
 
     try {
-      const senderID = event.senderID;
-      
-      if (!activeChats.has(senderID)) {
-        activeChats.set(senderID, [{
-          role: "system",
-          content: "IA Facebook créée exclusivement par Messie Osango. Réponses courtes et précises."
-        }]);
+      if (!conversations.has(senderId)) {
+        conversations.set(senderId, [PROMPT_SYSTEM]);
       }
 
-      const chat = activeChats.get(senderID);
-      chat.push({ role: "user", content: msg });
+      const historique = conversations.get(senderId);
+      historique.push({ role: "user", content: message });
 
-      while (chat.length > 6) chat.splice(1, 1);
+      if (historique.length > 8) historique.splice(1, 1);
 
-      const res = await fetch(API_URL, {
+      const reponse = await fetch(API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          contents: chat,
+        body: JSON.stringify({
+          contents: historique,
           generationConfig: {
-            maxOutputTokens: 500,
-            temperature: 0.9
+            maxOutputTokens: 600,
+            temperature: 0.7
           }
         })
       });
 
-      const reply = (await res.json())?.candidates?.[0]?.content?.parts?.[0]?.text || "👍";
-      await message.reply(reply);
-      chat.push({ role: "model", content: reply });
+      if (!reponse.ok) throw new Error(`Erreur API: ${reponse.status}`);
 
-    } catch {
+      const donnees = await reponse.json();
+      const reponseIA = donnees.candidates?.[0]?.content?.parts?.[0]?.text || "Je ne peux pas répondre maintenant.";
+
+      historique.push({ role: "model", content: reponseIA });
+      await envoyerMessage(senderId, reponseIA, tokenPage);
+
+    } catch (erreur) {
+      console.error("Erreur conversation:", erreur);
+      await envoyerMessage(senderId, 'Erreur de réponse. Veuillez contacter messie osango afin de l'informer.', tokenPage);
     }
   },
 
   onExit: function() {
-    activeChats.clear();
+    conversations.clear();
   }
 };
