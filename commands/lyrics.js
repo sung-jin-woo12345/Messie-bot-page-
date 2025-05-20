@@ -1,64 +1,57 @@
-const { sendMessage } = require('../handles/sendMessage');
-const { find } = require('llyrics');
+const axios = require('axios');
 
 module.exports = {
   name: 'lyrics',
   description: 'Fetch song lyrics',
-  usage: '-lyrics <song name>',
-  author: 'coffee',
+  author: 'Deku (rest api)',
+  async execute(senderId, args, pageAccessToken, sendMessage) {
+    const query = args.join(' ');
+    try {
+      const apiUrl = `https://deku-rest-api-3ijr.onrender.com/search/lyrics?q=${encodeURIComponent(query)}`;
+      const response = await axios.get(apiUrl);
+      const result = response.data.result;
 
-  async execute(senderId, args, pageAccessToken) {
-    if (!args.length) {
-      return sendMessage(senderId, { text: 'Please provide a song name.\nExample: -lyrics Faded' }, pageAccessToken);
-    }
+      if (result && result.lyrics) {
+        const lyricsMessage = `Title: ${result.title}\nArtist: ${result.artist}\n\n${result.lyrics}`;
 
-    const songName = args.join(' ');
-    await fetchLyrics(senderId, songName, pageAccessToken);
-  }
-};
-
-const fetchLyrics = async (senderId, songName, pageAccessToken) => {
-  try {
-    const response = await find({
-      song: songName,
-      engine: 'musixmatch', // Options: 'genius', 'musixmatch', 'youtube'
-      forceSearch: true,
-    });
-
-    if (!response || !response.lyrics) {
-      return sendMessage(senderId, { text: `No lyrics found for "${songName}".` }, pageAccessToken);
-    }
-
-    const { title, artist, artworkURL, lyrics } = response;
-
-    // Send song information using a generic template
-    await sendMessage(senderId, {
-      attachment: {
-        type: "template",
-        payload: {
-          template_type: "generic",
-          elements: [{
-            title: `🎧 Title: ${title}`,
-            subtitle: `🎙️ Artist: ${artist}`,
-            image_url: artworkURL || undefined,
-          }]
+        // Split the lyrics message into chunks if it exceeds 2000 characters
+        const maxMessageLength = 2000;
+        if (lyricsMessage.length > maxMessageLength) {
+          const messages = splitMessageIntoChunks(lyricsMessage, maxMessageLength);
+          for (const message of messages) {
+            sendMessage(senderId, { text: message }, pageAccessToken);
+          }
+        } else {
+          sendMessage(senderId, { text: lyricsMessage }, pageAccessToken);
         }
+
+        // Optionally send an image if available
+        if (result.image) {
+          sendMessage(senderId, {
+            attachment: {
+              type: 'image',
+              payload: {
+                url: result.image,
+                is_reusable: true
+              }
+            }
+          }, pageAccessToken);
+        }
+      } else {
+        console.error('Error: No lyrics found in the response.');
+        sendMessage(senderId, { text: 'Sorry, no lyrics were found for your query.' }, pageAccessToken);
       }
-    }, pageAccessToken);
-
-    // Send lyrics in chunks if necessary
-    await sendInChunks(senderId, lyrics, pageAccessToken);
-
-  } catch (error) {
-    console.error('Error fetching lyrics:', error);
-    sendMessage(senderId, { text: 'An error occurred while fetching lyrics. Please try again later.' }, pageAccessToken);
+    } catch (error) {
+      console.error('Error calling Lyrics API:', error);
+      sendMessage(senderId, { text: 'Sorry, there was an error processing your request.' }, pageAccessToken);
+    }
   }
 };
 
-const sendInChunks = async (senderId, text, pageAccessToken, maxLength = 1900) => {
-  const chunks = text.match(new RegExp(`.{1,${maxLength}}`, 'gs')) || [];
-  for (let i = 0; i < chunks.length; i++) {
-    const prefix = chunks.length > 1 ? `Part ${i + 1}/${chunks.length}\n` : '';
-    await sendMessage(senderId, { text: prefix + chunks[i] }, pageAccessToken);
+function splitMessageIntoChunks(message, chunkSize) {
+  const chunks = [];
+  for (let i = 0; i < message.length; i += chunkSize) {
+    chunks.push(message.slice(i, i + chunkSize));
   }
-};
+  return chunks;
+}
