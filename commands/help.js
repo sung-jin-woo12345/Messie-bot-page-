@@ -4,7 +4,7 @@ const { sendMessage } = require('../handles/sendMessage');
 
 module.exports = {
   name: 'help',
-  description: 'Show available commands',
+  description: 'Afficher les commandes disponibles',
   usage: 'help\nhelp [command name]',
   author: 'messie osango',
   execute(senderId, args, pageAccessToken) {
@@ -20,8 +20,7 @@ module.exports = {
 
       if (commandFile) {
         const command = require(path.join(commandsDir, commandFile));
-        const commandDetails = `
-╭⌾⋅ ミ✘.𝙼𝙴𝚂𝚂𝙸𝙴〈 ⋅⌾╮
+        const commandDetails = `╭⌾⋅ ミ✘.𝙼𝙴𝚂𝚂𝙸𝙴〈 ⋅⌾╮
 │
 │   𝙽𝚊𝚖𝚎: ${command.name}
 │   𝙳𝚎𝚜𝚌: ${command.description}
@@ -43,8 +42,7 @@ module.exports = {
       return `│   ✧ ${command.name}`;
     });
 
-    const helpMessage = `
-╭⌾⋅ ミ✘.𝙼𝙴𝚂𝚂𝙸𝙴〈 ⋅⌾╮
+    const helpMessage = `╭⌾⋅ ミ✘.𝙼𝙴𝚂𝚂𝙸𝙴〈 ⋅⌾╮
 │
 ${commands.join('\n')}
 │
