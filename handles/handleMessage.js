@@ -2,38 +2,51 @@ const fs = require('fs');
 const path = require('path');
 const { sendMessage } = require('./sendMessage');
 
+const PREFIX = '-';
 const commands = new Map();
-const prefix = '-';
 
-// Load command modules
-fs.readdirSync(path.join(__dirname, '../commands'))
-  .filter(file => file.endsWith('.js'))
-  .forEach(file => {
-    const command = require(`../commands/${file}`);
-    commands.set(command.name.toLowerCase(), command);
-  });
+function loadCommands() {
+    const commandsPath = path.join(__dirname, '../commands');
+    const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
 
-async function handleMessage(event, pageAccessToken) {
-  const senderId = event?.sender?.id;
-  if (!senderId) return console.error('Invalid event object');
-
-  const messageText = event?.message?.text?.trim();
-  if (!messageText) return console.log('Received event without message text');
-
-  const [commandName, ...args] = messageText.startsWith(prefix)
-    ? messageText.slice(prefix.length).split(' ')
-    : messageText.split(' ');
-
-  try {
-    if (commands.has(commandName.toLowerCase())) {
-      await commands.get(commandName.toLowerCase()).execute(senderId, args, pageAccessToken, sendMessage);
-    } else {
-      await commands.get('conversation').execute(senderId, [messageText], pageAccessToken);
-    }
-  } catch (error) {
-    console.error(`Error executing command:`, error);
-    await sendMessage(senderId, { text: error.message || 'Une erreur s'est produite lors de l'exécution de cette commande.' }, pageAccessToken);
-  }
+    commandFiles.forEach(file => {
+        try {
+            const command = require(path.join(commandsPath, file));
+            if (command.name && command.execute) {
+                commands.set(command.name.toLowerCase(), command);
+            }
+        } catch (err) {
+            console.error(`Erreur lors du chargement de la commande ${file}:`, err);
+        }
+    });
 }
+
+async function handleMessage(senderId, message, pageAccessToken) {
+    if (!message.text?.startsWith(PREFIX)) return;
+
+    const args = message.text.slice(PREFIX.length).trim().split(/ +/);
+    const commandName = args.shift().toLowerCase();
+
+    if (!commands.has(commandName)) {
+        return await sendMessage(
+            senderId,
+            { text: `Commande inconnue. Utilisez ${PREFIX}help pour la liste.` },
+            pageAccessToken
+        );
+    }
+
+    try {
+        await commands.get(commandName).execute(senderId, args, pageAccessToken);
+    } catch (error) {
+        console.error(`Erreur avec la commande ${commandName}:`, error);
+        await sendMessage(
+            senderId,
+            { text: error.message || 'Erreur lors de l\'exécution de la commande.' },
+            pageAccessToken
+        );
+    }
+}
+
+loadCommands();
 
 module.exports = { handleMessage };
