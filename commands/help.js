@@ -4,55 +4,61 @@ const { sendMessage } = require('../handles/sendMessage');
 
 module.exports = {
   name: 'help',
-  description: 'Afficher les commandes ,
-  usage: 'help\nhelp [command name]',
-  author: 'messie osango ',
+  description: 'Affiche la putain de liste des commandes',
+  usage: 'help\nhelp [nom de la commande]',
+  author: 'messie osango',
+
   execute(senderId, args, pageAccessToken) {
     const commandsDir = path.join(__dirname, '../commands');
-    const commandFiles = fs.readdirSync(commandsDir).filter(file => file.endsWith('.js'));
+    const commandFiles = fs.readdirSync(commandsDir).filter(f => f.endsWith('.js'));
 
-    if (args.length > 0) {
-      const commandName = args[0].toLowerCase();
-      const commandFile = commandFiles.find(file => {
-        const command = require(path.join(commandsDir, file));
-        return command.name.toLowerCase() === commandName;
-      });
-
-      if (commandFile) {
-        const command = require(path.join(commandsDir, commandFile));
-        const commandDetails = `
-╭⌾⋅ ミ✘.𝙼𝙴𝚂𝚂𝙸𝙴〈 ⋅⌾╮
-│
-│   𝙽𝚊𝚖𝚎: ${command.name}
-│   𝙳𝚎𝚜𝚌: ${command.description}
-│   𝚄𝚜𝚊𝚐𝚎: ${command.usage}
-│
-│   ┐('～\`;)┌
-│
-╰─────⌾⋅ ⌾ ⋅⌾─────╯`;
-        
-        sendMessage(senderId, { text: commandDetails }, pageAccessToken);
-      } else {
-        sendMessage(senderId, { text: `╭⌾⋅ ミ✘.𝙴𝚁𝚁𝙾𝚁〈 ⋅⌾╮\n│\n│   Command not found!\n│\n╰─────⌾⋅ ⌾ ⋅⌾─────╯` }, pageAccessToken);
+    const loadCommand = file => {
+      try {
+        return require(path.join(commandsDir, file));
+      } catch {
+        return null;
       }
-      return;
+    };
+
+    if (args.length) {
+      const name = args[0].toLowerCase();
+      const command = commandFiles.map(loadCommand).find(c => c?.name.toLowerCase() === name);
+
+      return sendMessage(
+        senderId,
+        { text: command
+          ? `
+╔═━━━━━━━◆━━━━━━━═╗
+  𝙼𝚎𝚜𝚜𝚒𝚎 page bot 
+╠═════════════════╣
+𝙉𝙊𝙈 : ${command.name}
+𝘿𝙀𝙎𝘾𝙍𝙄𝙋 : ${command.description}
+𝙐𝙎𝙎𝘼𝙂𝙀 : ${command.usage}
+╚═━━━━━━◆━━━━━━━═╝`
+          : `Putain de commande "${name}" introuvable.` },
+        pageAccessToken
+      );
     }
 
-    const commands = commandFiles.map(file => {
-      const command = require(path.join(commandsDir, file));
-      return `│   ✦ ${command.name}`;
-    });
+    const commandsList = commandFiles
+      .map(loadCommand)
+      .filter(c => c && c.name !== 'test')
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(c => `▸ ${c.name}`)
+      .join('\n');
 
-    const helpMessage = `
-╭⌾⋅ ミ✘.𝙲𝙾𝚖𝚖𝚊𝚗𝚍𝚜〈 ⋅⌾╮
-│
-${commands.join('\n')}
-│
-│   Type: help [command]
-│   for more details
-│
-╰─────⌾⋅ ⌾ ⋅⌾─────╯`;
-
-    sendMessage(senderId, { text: helpMessage }, pageAccessToken);
+    sendMessage(
+      senderId,
+      { text: `
+╔═════════◆════════╗
+  𝙇𝙄𝙎𝙏𝙀 𝘿𝙀𝙎 𝘾𝙊𝙈𝙈𝘼𝙉𝘿𝙀𝙎  
+╠══════════════════╣
+${commandsList}
+╠══════════════════╣
+Tape -help [commande]
+pour les détails bordel
+╚════════◆════════╝` },
+      pageAccessToken
+    );
   }
 };
