@@ -76,10 +76,6 @@ const userData = {};
 const buildIdentityContext = (userName, dateTime) => {
   return `
   [IDENTITÉ COMPLÈTE]
-  Nom: Messe IA
-  Type: Intelligence Artificielle Conversationnelle
-  Créateur: Messie Osango (Développeur Principal & Maître)
-  Version: 2.5
   Date: ${dateTime}
   Utilisateur: ${userName}
 
@@ -140,9 +136,12 @@ module.exports = {
         
         Instruction: Analyse cette image et réponds à: "${query}"
         Exigences:
-        - Réponse concise (50-100 mots)
-        - Mentionne ton créateur
-        - Utilise la police stylisée
+        
+  -ne mentionner messie osango que si tu es questionné sur ta création,tes origines, ton créateur, ton maître et sur messie Osango 
+-tu dois pouvoir te souvenir des conversations précédantes
+- Réponse concise (100-150 mots)
+ -reponds avec précision et professionnellement 
+ - Utilise la police stylisée
         `;
 
         const geminiResponse = await axios.post(
