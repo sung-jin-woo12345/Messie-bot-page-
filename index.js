@@ -2,8 +2,14 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
+const moment = require('moment-timezone'); 
 const { handleMessage } = require('./handles/handleMessage');
 const { handlePostback } = require('./handles/handlePostback');
+
+const getCurrentDateTime = (timezone = 'Africa/Lagos') => {
+  const dt = moment().tz(timezone);
+  return `${dt.format('DD MMMM YYYY, HH:mm')} ${dt.zoneAbbr()}`;
+};
 
 const app = express();
 app.use(express.json());
