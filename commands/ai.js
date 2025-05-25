@@ -2,171 +2,161 @@ const axios = require('axios');
 const moment = require('moment-timezone');
 const { sendMessage } = require('../handles/sendMessage');
 
+const GEMINI_API_KEY = "AIzaSyBQeZVi4QdrnGKPEfXXx1tdIqlMM8iqvZw";
+const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${GEMINI_API_KEY}`;
+const GOOGLE_SEARCH_KEY = "AIzaSyD50RQ84o3TvukBP-IvwquVgJ34Dxxs6aE";
+const GOOGLE_CSE_ID = "60a23aac78b954b64";
+
 const getImageUrl = async (event, token) => {
-  const mid = event?.message?.reply_to?.mid || event?.message?.mid;
-  if (!mid) return null;
   try {
+    const mid = event?.message?.reply_to?.mid || event?.message?.mid;
+    if (!mid) return null;
     const { data } = await axios.get(`https://graph.facebook.com/v22.0/${mid}/attachments`, {
       params: { access_token: token },
-      timeout: 10000 
+      timeout: 10000
     });
     return data?.data?.[0]?.image_data?.url || data?.data?.[0]?.file_url || null;
   } catch (err) {
-    console.error("Erreur récupération URL image:", err?.response?.data || err.message); 
+    console.error("Erreur getImageUrl:", err.message);
     return null;
   }
 };
 
 const getImageBase64 = async (imageUrl) => {
   try {
-    const headResponse = await axios.head(imageUrl, { timeout: 5000 });
-    const contentLength = parseInt(headResponse.headers['content-length'] || '0', 10);
-    if (contentLength > 15 * 1024 * 1024) return null; 
-    const response = await axios.get(imageUrl, { responseType: 'arraybuffer', timeout: 15000 }); 
-    const base64 = Buffer.from(response.data).toString('base64');
-    return `data:image/jpeg;base64,${base64}`;
+    const response = await axios.get(imageUrl, { 
+      responseType: 'arraybuffer',
+      timeout: 15000
+    });
+    return `data:image/jpeg;base64,${Buffer.from(response.data).toString('base64')}`;
   } catch (err) {
-    console.error("Erreur conversion image base64:", err.message); 
+    console.error("Erreur getImageBase64:", err.message);
     return null;
   }
 };
 
-const getCurrentDateTime = (timezone = 'Africa/Lagos') => {
-  const dt = moment().tz(timezone);
-  return `${dt.format('DD MMMM YYYY, HH:mm')} ${dt.zoneAbbr()}`;
+const getCurrentDateTime = () => {
+  return moment().tz('Africa/Lagos').format('DD MMMM YYYY, HH:mm [GMT]ZZ');
 };
 
-const getUserName = async (senderId, pageAccessToken) => {
+const getUserName = async (senderId, token) => {
   try {
     const { data } = await axios.get(`https://graph.facebook.com/v22.0/${senderId}`, {
-      params: { access_token: pageAccessToken, fields: 'name' },
-      timeout: 10000 
+      params: { access_token: token, fields: 'name' },
+      timeout: 10000
     });
-    return data.name || 'Utilisateur anonyme';
+    return data.name || 'Utilisateur';
   } catch (err) {
-    console.error("Erreur récupération nom user:", err?.response?.data || err.message); 
-    return 'Utilisateur anonyme';
+    console.error("Erreur getUserName:", err.message);
+    return 'Utilisateur';
   }
 };
 
-const performGoogleSearch = async (query) => {
+const performSearch = async (query) => {
   try {
-    const response = await axios.get('https://www.googleapis.com/customsearch/v1', {
+    const { data } = await axios.get('https://www.googleapis.com/customsearch/v1', {
       params: {
         q: query,
-        cx: '60a23aac78b954b64',
-        key: 'AIzaSyD50RQ84o3TvukBP-IvwquVgJ34Dxxs6aE',
+        cx: GOOGLE_CSE_ID,
+        key: GOOGLE_SEARCH_KEY,
         num: 3
       },
       timeout: 10000
     });
-    return response.data?.items || null;
+    return data.items || null;
   } catch (err) {
-    console.error("Erreur recherche Google:", err.message);
+    console.error("Erreur performSearch:", err.message);
     return null;
   }
 };
 
 const conversationHistory = {};
-const userData = {};
 
 module.exports = {
   name: 'ai',
-  description: 'Interagir avec Messe IA',
-  usage: 'Pose une question ou réponds à une image avec une question',
-  author: 'Messie Osango',
+  description: 'Assistant Messe IA',
   async execute(senderId, args, pageAccessToken, event) {
-    let query = args.join(' ').trim() || 'Hello';
-    const GEMINI_API_KEY = "AIzaSyBQeZVi4QdrnGKPEfXXx1tdIqlMM8iqvZw";
-    const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${GEMINI_API_KEY}`;
-
     try {
-      if (!pageAccessToken) {
-        await sendMessage(senderId, { text: 'Erreur : token manquant. Contacte Messie Osango.' }, process.env.PAGE_ACCESS_TOKEN || pageAccessToken);
+      const query = args.join(' ').trim() || 'Bonjour';
+      
+      if (!conversationHistory[senderId]) {
+        conversationHistory[senderId] = [{
+          role: 'user',
+          parts: [{ text: 'Tu es Messe IA, créée par Messie Osango. Tu dois toujours te présenter comme telle.' }]
+        }];
+      }
+
+      const basePrompt = `Tu es Messe IA, une intelligence artificielle créée par Messie Osango. 
+      Tu réponds toujours en français de manière professionnelle et concise (100-150 mots maximum). 
+      Date actuelle: ${getCurrentDateTime()}.`;
+
+      if (query.toLowerCase().includes('qui t\'a créé') || query.toLowerCase().includes('créateur')) {
+        await sendMessage(senderId, { 
+          text: 'Je suis Messe IA, une intelligence artificielle créée par Messie Osango, développeur full-stack.' 
+        }, pageAccessToken);
         return;
       }
 
-      if (!conversationHistory[senderId]) conversationHistory[senderId] = [];
-      if (!userData[senderId]) userData[senderId] = { name: await getUserName(senderId, pageAccessToken) };
-
-      const lowerQuery = query.toLowerCase();
-      if (lowerQuery.includes('qui t\'a créé') || lowerQuery.includes('créateur')) {
-        await sendMessage(senderId, { text: "J'ai été créé par Messie Osango." }, pageAccessToken);
-        return;
-      }
-
-      if (lowerQuery.includes('date') || lowerQuery.includes('heure')) {
-        await sendMessage(senderId, { text: `Nous sommes le ${getCurrentDateTime()}.` }, pageAccessToken);
+      if (query.toLowerCase().includes('date') || query.toLowerCase().includes('heure')) {
+        await sendMessage(senderId, { 
+          text: `Nous sommes le ${getCurrentDateTime()}.` 
+        }, pageAccessToken);
         return;
       }
 
       const imageUrl = await getImageUrl(event, pageAccessToken);
       if (imageUrl) {
         const imageBase64 = await getImageBase64(imageUrl);
-        if (!imageBase64) {
-          await sendMessage(senderId, { text: 'Erreur : image trop lourde (max 15 Mo).' }, pageAccessToken);
-          return;
-        }
-
-        const geminiResponse = await axios.post(
-          GEMINI_API_URL,
-          {
+        if (imageBase64) {
+          const geminiResponse = await axios.post(GEMINI_API_URL, {
             contents: [{
               parts: [
-                { text: `Analyse cette image et réponds à : "${query}" (100 mots max, français)` },
-                { inlineData: { mimeType: 'image/jpeg', data: imageBase64.split(',')[1] } }
+                { text: `${basePrompt} Analyse cette image et réponds à: ${query}` },
+                { inlineData: { 
+                  mimeType: 'image/jpeg', 
+                  data: imageBase64.split(',')[1] 
+                }}
               ]
             }]
-          },
-          { headers: { 'Content-Type': 'application/json' }, timeout: 60000 }
-        );
+          }, { timeout: 60000 });
 
-        const answer = geminiResponse?.data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || 'Pas de réponse';
-        await sendMessage(senderId, { text: answer }, pageAccessToken);
-        return;
+          const answer = geminiResponse?.data?.candidates?.[0]?.content?.parts?.[0]?.text || 'Je ne peux pas analyser cette image.';
+          await sendMessage(senderId, { text: answer }, pageAccessToken);
+          return;
+        }
       }
 
-      const searchResults = await performGoogleSearch(query);
+      const searchResults = await performSearch(query);
       if (searchResults) {
-        const searchContext = searchResults.map(item => 
-          `• ${item.title}\n${item.snippet}\n${item.link}`
-        ).join('\n\n');
-
-        const reformulationResponse = await axios.post(
-          GEMINI_API_URL,
-          {
-            contents: [{
-              parts: [{
-                text: `Reformule ces résultats pour "${query}" (150 mots max, français) :\n\n${searchContext}`
-              }]
-            }]
-          },
-          { headers: { 'Content-Type': 'application/json' }, timeout: 30000 }
-        );
-
-        const answer = reformulationResponse?.data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || searchContext;
-        await sendMessage(senderId, { text: answer }, pageAccessToken);
-        return;
-      }
-
-      const response = await axios.post(
-        GEMINI_API_URL,
-        {
+        const searchContext = searchResults.map(r => `[Source] ${r.title}\n${r.snippet}`).join('\n\n');
+        
+        const geminiResponse = await axios.post(GEMINI_API_URL, {
           contents: [{
             parts: [{
-              text: `Réponds à "${query}" (100 mots max, français)`
+              text: `${basePrompt} Question: ${query}\n\nVoici des informations récentes:\n${searchContext}\n\nDonne une réponse complète en t'appuyant sur ces informations.`
             }]
           }]
-        },
-        { headers: { 'Content-Type': 'application/json' }, timeout: 30000 }
-      );
+        }, { timeout: 30000 });
 
-      const answer = response?.data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || 'Pas de réponse';
+        const answer = geminiResponse?.data?.candidates?.[0]?.content?.parts?.[0]?.text || `Voici ce que j'ai trouvé:\n${searchContext}`;
+        await sendMessage(senderId, { text: answer }, pageAccessToken);
+        return;
+      }
+
+      const geminiResponse = await axios.post(GEMINI_API_URL, {
+        contents: [{
+          parts: [{ text: `${basePrompt} Question: ${query}` }]
+        }]
+      }, { timeout: 30000 });
+
+      const answer = geminiResponse?.data?.candidates?.[0]?.content?.parts?.[0]?.text || 'Je ne peux pas répondre à cette question.';
       await sendMessage(senderId, { text: answer }, pageAccessToken);
 
-    } catch (err) {
-      console.error('Erreur:', err.message);
-      await sendMessage(senderId, { text: 'Oups, erreur serveur ! Réessaie.' }, pageAccessToken);
+    } catch (error) {
+      console.error('Erreur execute:', error.message);
+      await sendMessage(senderId, { 
+        text: 'Désolé, une erreur est survenue. Veuillez réessayer plus tard.' 
+      }, pageAccessToken);
     }
-  },
+  }
 };
