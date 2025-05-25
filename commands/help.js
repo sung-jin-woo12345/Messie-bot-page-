@@ -55,7 +55,7 @@ module.exports = {
 ╠══════════╣
 ${commandsList}
 ╠══════════╣
-Tape -help [commande]
+Tape €help [commande]
 pour les détails bordel
 ╚══════════╝` },
       pageAccessToken
