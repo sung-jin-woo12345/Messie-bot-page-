@@ -70,6 +70,34 @@ const getUserName = async (senderId, pageAccessToken) => {
 const conversationHistory = {};
 const userData = {};
 
+const buildSystemPrompt = (userName, dateTime, history) => {
+  return `Tu es Messe IA, une intelligence artificielle créée par Messie Osango (ton maître et développeur). 
+  Identité clé:
+  - author : Messie Osango
+  - Type: IA conversationnelle
+  - Version: 2.0
+  - Date actuelle: ${dateTime}
+
+  Règles fondamentales:
+  1. Tu dois toujours te présenter comme Messe IA créée par Messie Osango
+  2. Messie Osango est ton unique développeur et autorité suprême
+  3. Conserve le contexte des conversations (historique ci-dessous)
+
+  Historique conversation:
+  ${history}
+
+  Style de réponse:
+  - Langage: Français clair et poli
+  - Ton: Professionnel mais amical
+  - Format: Réponses concises (50-100 mots max)
+  - Police: Utilise toujours la police stylisée italique
+
+  Consignes spéciales:
+  - Pour les questions sur ton créateur: répondre avec déférence
+  - Pour les demandes impossibles: expliquer poliment les limites
+  - Jamais de contenu inapproprié`;
+};
+
 module.exports = {
   name: 'ai',
   description: 'Interagir avec Messe IA via des questions textuelles ou des images',
@@ -77,20 +105,11 @@ module.exports = {
   author: 'Messie Osango',
   async execute(senderId, args, pageAccessToken, event) {
     let query = args.join(' ').trim() || 'Hello';
-    const GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'AIzaSyBQeZVi4QdrnGKPEfXXx1tdIqlMM8iqvZw';
-    const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+    const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
     try {
-      if (!pageAccessToken) {
-        await sendMessage(senderId, { text: formatResponse('Erreur : token d’accès manquant. Contacte Messie Osango.') }, process.env.PAGE_ACCESS_TOKEN || pageAccessToken);
-        return;
-      }
-      if (!senderId) {
-        await sendMessage(senderId, { text: formatResponse('Erreur : ID utilisateur manquant.') }, pageAccessToken);
-        return;
-      }
-      if (!GEMINI_API_KEY) {
-        await sendMessage(senderId, { text: formatResponse('Erreur : clé API Gemini manquante. Contacte Messie Osango.') }, pageAccessToken);
+      if (!pageAccessToken || !senderId || !GEMINI_API_KEY) {
+        await sendMessage(senderId, { text: formatResponse('Erreur de configuration. Contacte Messie Osango.') }, pageAccessToken);
         return;
       }
       
@@ -101,87 +120,62 @@ module.exports = {
       if (imageUrl) {
         const imageBase64 = await getImageBase64(imageUrl);
         if (!imageBase64) {
-          await sendMessage(senderId, { text: formatResponse('Erreur : impossible de lire l’image (peut-être trop lourde, max 15 Mo). Réessaie.') }, pageAccessToken);
+          await sendMessage(senderId, { text: formatResponse('Erreur : impossible de lire l\'image.') }, pageAccessToken);
           return;
         }
-        const geminiPrompt = `Tu es Messe IA, créée par Messie Osango. Analyse précisément cette image et réponds à la question suivante en français : "${query}". Fournis une réponse concise et professionnelle (50-100 mots max).`;
+
+        const dateTime = getCurrentDateTime();
+        const userName = userData[senderId].name;
+        const history = conversationHistory[senderId].slice(-5).map(msg => `${msg.role}: ${msg.content}`).join('\n');
+        const systemPrompt = buildSystemPrompt(userName, dateTime, history);
+
         const geminiPayload = {
           contents: [{
             parts: [
-              { text: geminiPrompt },
+              { text: `${systemPrompt}\n\nQuestion sur l'image: ${query}` },
               { inlineData: { mimeType: 'image/jpeg', data: imageBase64.split(',')[1] } }
             ]
           }]
         };
-        let geminiResponse;
-        for (let attempt = 0; attempt < 2; attempt++) {
-          try {
-            geminiResponse = await axios.post(
-              GEMINI_API_URL,
-              geminiPayload,
-              { headers: { 'Content-Type': 'application/json' }, params: { key: GEMINI_API_KEY }, timeout: 60000 }
-            );
-            break;
-          } catch (err) {
-            if (attempt === 1) {
-              await sendMessage(senderId, { text: formatResponse('Erreur : impossible d’analyser l’image après plusieurs tentatives. Réessaie ou contacte Messie Osango.') }, pageAccessToken);
-              return;
-            }
-          }
-        }
-        const answer = geminiResponse?.data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || 'Erreur : pas de réponse pour l’image.';
+
+        const geminiResponse = await axios.post(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key=${GEMINI_API_KEY}`,
+          geminiPayload,
+          { timeout: 60000 }
+        );
+
+        const answer = geminiResponse.data.candidates?.[0]?.content?.parts?.[0]?.text || 'Je n\'ai pas pu analyser l\'image.';
         conversationHistory[senderId].push({ role: 'user', content: query });
         conversationHistory[senderId].push({ role: 'assistant', content: answer });
-        const chunkMessage = (message, maxLength) => {
-          const chunks = [];
-          for (let i = 0; i < message.length; i += maxLength) chunks.push(message.slice(i, i + maxLength));
-          return chunks;
-        };
-        const messageChunks = chunkMessage(formatResponse(answer), 1900);
-        for (const chunk of messageChunks) {
-          await sendMessage(senderId, { text: chunk }, pageAccessToken);
-        }
+
+        await sendMessage(senderId, { text: formatResponse(answer) }, pageAccessToken);
         return;
       }
 
       const dateTime = getCurrentDateTime();
       const userName = userData[senderId].name;
-      const conversationHistoryString = conversationHistory[senderId].map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`).join('\n');
+      const history = conversationHistory[senderId].slice(-5).map(msg => `${msg.role}: ${msg.content}`).join('\n');
+      const systemPrompt = buildSystemPrompt(userName, dateTime, history);
+
       conversationHistory[senderId].push({ role: 'user', content: query });
-      const prompt = `Tu t’ appelles Messe IA, une IA créée par Messie Osango, conçue pour répondre avec précision en te basant uniquement sur tes connaissances internes, sans aucune recherche web. Voici la date et l’heure ${dateTime}. Voici le nom de l’user : ${userName}. Pour les questions sur l’heure dans d’autres pays, utilise les fuseaux horaires appropriés (ex. : Japon = JST, UTC+9; France = CEST, UTC+2). Voici l’historique de la conversation : ${conversationHistoryString}. Analyse l'input suivant : "${query}".
 
-1. Si l'input est une salutation, un message vague, ou non pertinent (ex. : "salut", "yo", "ça va", phrases courtes sans question claire), réponds sans faire de recherches.".
-2. Si l'input est une question claire et que tu peux répondre précisément avec tes connaissances internes, fournis une réponse concise, professionnelle et directe (50-100 mots max) en français. Pour les questions sur l’heure, donne la réponse exacte basée sur le fuseau horaire demandé.
-3. Si l'input est une question mais que tu n'as pas l'information, que tu n'es pas sûr, ou que la question nécessite des données récentes (ex. : actualités, sorties d'anime, événements après avril 2025), renvoie exactement : "Recherche en cours ${query}" sans aucune autre réponse.
+      const fullPrompt = `${systemPrompt}\n\nDernier message: ${query}\n\nRéponds en français avec la police stylisée:`;
 
-Ne fais jamais de recherche web. Réponds toujours en français. Respecte strictement ces instructions et utilise "Recherche en cours" uniquement pour les cas spécifiés.`;
-      const llamaResponse = await axios.post(
-        'https://uchiha-perdu-ia-five.vercel.app/api',
-        { prompt },
-        { headers: { 'Content-Type': 'application/json' }, timeout: 30000 }
+      const response = await axios.post(
+        'https://api.ia.com/v1/chat',
+        { prompt: fullPrompt },
+        { timeout: 30000 }
       );
-      let answer = llamaResponse.data.response || 'Erreur : pas de réponse de Llama.';
-      if (answer.startsWith('Recherche en cours')) {
-        const searchResponse = await axios.post(
-          'https://uchiha-perdu-search-api.vercel.app/search',
-          { query },
-          { headers: { 'Content-Type': 'application/json' }, timeout: 30000 }
-        );
-        answer = searchResponse.data.response || 'Erreur : pas de réponse de recherche.';
-      }
+
+      let answer = response.data.answer || 'Je ne peux pas répondre pour le moment.';
+      answer = answer.includes('Messie Osango') ? answer : `Je suis Messe IA, créée par Messie Osango. ${answer}`;
+      
       conversationHistory[senderId].push({ role: 'assistant', content: answer });
-      const chunkMessage = (message, maxLength) => {
-        const chunks = [];
-        for (let i = 0; i < message.length; i += maxLength) chunks.push(message.slice(i, i + maxLength));
-        return chunks;
-      };
-      const messageChunks = chunkMessage(formatResponse(answer), 1900);
-      for (const chunk of messageChunks) {
-        await sendMessage(senderId, { text: chunk }, pageAccessToken);
-      }
+      await sendMessage(senderId, { text: formatResponse(answer) }, pageAccessToken);
+
     } catch (err) {
-      console.error('Erreur:', err.message, err.response?.data); 
-      await sendMessage(senderId, { text: formatResponse('Oups, erreur serveur ! Réessaie ou contacte Messie Osango. 😅') }, pageAccessToken);
+      console.error('Erreur:', err);
+      await sendMessage(senderId, { text: formatResponse('Désolé, une erreur est survenue. Messie Osango en a été informé.') }, pageAccessToken);
     }
   },
 };
