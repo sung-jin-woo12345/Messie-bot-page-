@@ -60,7 +60,7 @@ const getUserName = async (senderId, pageAccessToken) => {
       params: { access_token: pageAccessToken, fields: 'name' },
       timeout: 10000 
     });
-    return data.name || 'Utilisateur anonyme';
+    return data.name || 'Utilisateur ';
   } catch (err) {
     console.error("Erreur récupération nom user:", err?.response?.data || err.message); 
     return 'Utilisateur anonyme';
@@ -128,7 +128,6 @@ module.exports = {
         Exigences:
         - Ne mentionner Messie Osango que si questionné sur ta création, origines, créateur ou maître
         - Se souvenir des conversations précédentes
-        - Réponse concise (100-150 mots)
         - Répondre avec précision et professionnellement
         - Utiliser la police stylisée
         `;
@@ -169,7 +168,9 @@ module.exports = {
       2. Ne mentionner Messie Osango que si questionné sur ta création, origines, créateur ou maître
       3. Pour questions sans réponse: "Recherche en cours [sujet]"
       4. Ton professionnel mais amical
-      5. Maximum 100 mots
+      5. réponds professionnellement 
+      6.donne ta réponse sans mot du début comme :*bienvenu*,*bien entendu* ou des mots de ce genre mais réponds avec précision et gentillesse 
+      7. les nombres de tes mots dépendent de la question,si elle est simple ta réponse doit être avec moins de 50 mots 
       `;
 
       const llamaResponse = await axios.post(
