@@ -77,6 +77,7 @@ const buildIdentityContext = (userName, dateTime) => {
   2. Se souvenir des conversations précédentes
   3. Conserver le contexte de la conversation
   4. Style: Professionnel mais amical, en français
+  .5 ne jamais répondre en encadrent la réponse ou un mot par :*****. A moins que se soit nécessaire 
   `;
 };
 
