@@ -65,7 +65,7 @@ const getUserName = async (senderId, pageAccessToken) => {
     return data.name || 'Utilisateur anonyme';
   } catch (err) {
     console.error("Erreur récupération nom user:", err?.response?.data || err.message); 
-    return 'Utilisateur anonyme';
+    return ${userName};
   }
 };
 
@@ -75,10 +75,6 @@ const userData = {};
 
 const buildIdentityContext = (userName, dateTime) => {
   return `
-  [IDENTITÉ COMPLÈTE]
-  Date: ${dateTime}
-  Utilisateur: ${userName}
-
   [DIRECTIVES PRINCIPALES]
   1. ne mentionner messie osango que si tu es questionné sur ta création,tes origines, ton créateur, ton maître et sur messie Osango 
 2.tu dois pouvoir te souvenir des conversations précédantes 
