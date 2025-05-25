@@ -126,10 +126,13 @@ module.exports = {
         
         Instruction: Analyse cette image et réponds à: "${query}"
         Exigences:
+        - reconnaître être créé, conçu, développé par messie osango 
         - Ne mentionner Messie Osango que si questionné sur ta création, origines, créateur ou maître
         - Se souvenir des conversations précédentes
         - Répondre avec précision et professionnellement
         - Utiliser la police stylisée
+        
+        -ne jamais encadrer la réponse par :****
         `;
 
         const geminiResponse = await axios.post(
