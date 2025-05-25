@@ -2,6 +2,7 @@ const axios = require('axios');
 const moment = require('moment-timezone');
 const { sendMessage } = require('../handles/sendMessage');
 
+
 const formatResponse = (text) => {
   const charMap = {
     'A': '𝘈', 'B': '𝘉', 'C': '𝘊', 'D': '𝘋', 'E': '𝘌', 
@@ -19,6 +20,7 @@ const formatResponse = (text) => {
   };
   return text.split('').map(char => charMap[char] || char).join('');
 };
+
 
 const getImageUrl = async (event, token) => {
   const mid = event?.message?.reply_to?.mid || event?.message?.mid;
@@ -67,115 +69,164 @@ const getUserName = async (senderId, pageAccessToken) => {
   }
 };
 
+
 const conversationHistory = {};
 const userData = {};
 
-const buildSystemPrompt = (userName, dateTime, history) => {
-  return `Tu es Messe IA, une intelligence artificielle créée par Messie Osango (ton maître et développeur). 
-  Identité clé:
-  - author : Messie Osango
-  - Type: IA conversationnelle
-  - Version: 2.0
-  - Date actuelle: ${dateTime}
+const buildIdentityContext = (userName, dateTime) => {
+  return `
+  [IDENTITÉ COMPLÈTE]
+  Nom: Messe IA
+  Type: Intelligence Artificielle Conversationnelle
+  Créateur: Messie Osango (Développeur Principal & Maître)
+  Version: 2.5
+  Date: ${dateTime}
+  Utilisateur: ${userName}
 
-  Règles fondamentales:
-  1. Tu dois toujours te présenter comme Messe IA créée par Messie Osango
-  2. Messie Osango est ton unique développeur et autorité suprême
-  3. Conserve le contexte des conversations (historique ci-dessous)
+  [DIRECTIVES PRINCIPALES]
+  1. ne mentionner messie osango que si tu es questionné sur ta création,tes origines, ton créateur, ton maître et sur messie Osango 
+2.tu dois pouvoir te souvenir des conversations précédantes 
+  3. Conserver le contexte de la conversation
+  4. Style: Professionnel mais amical, en français
+  `;
+};
 
-  Historique conversation:
-  ${history}
-
-  Style de réponse:
-  - Langage: Français clair et poli
-  - Ton: Professionnel mais amical
-  - Format: Réponses concises (50-100 mots max)
-  - Police: Utilise toujours la police stylisée italique
-
-  Consignes spéciales:
-  - Pour les questions sur ton créateur: répondre avec déférence
-  - Pour les demandes impossibles: expliquer poliment les limites
-  - Jamais de contenu inapproprié`;
+const buildConversationContext = (history) => {
+  if (history.length === 0) return "\n[PAS D'HISTORIQUE]";
+  return `
+  [HISTORIQUE DE CONVERSATION]
+  ${history.slice(-3).map((msg, i) => 
+    `${msg.role === 'user' ? 'UTILISATEUR' : 'MESSE IA'}: ${msg.content}`
+  ).join('\n')}
+  `;
 };
 
 module.exports = {
   name: 'ai',
-  description: 'Interagir avec Messe IA via des questions textuelles ou des images',
-  usage: 'Pose une question ou réponds à une image avec une question.',
+  description: 'mon bot page',
+  usage: 'Posez votre question ou envoyez une image',
   author: 'Messie Osango',
   async execute(senderId, args, pageAccessToken, event) {
-    let query = args.join(' ').trim() || 'Hello';
-    const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+    let query = args.join(' ').trim() || 'Bonjour';
+    const GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'AIzaSyBQeZVi4QdrnGKPEfXXx1tdIqlMM8iqvZw';
+    const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent';
 
     try {
+    
       if (!pageAccessToken || !senderId || !GEMINI_API_KEY) {
-        await sendMessage(senderId, { text: formatResponse('Erreur de configuration. Contacte Messie Osango.') }, pageAccessToken);
+        await sendMessage(senderId, { text: formatResponse('Erreur de configuration. Contactez Messie Osango.') }, pageAccessToken);
         return;
       }
-      
+
+    
       if (!conversationHistory[senderId]) conversationHistory[senderId] = [];
       if (!userData[senderId]) userData[senderId] = { name: await getUserName(senderId, pageAccessToken) };
 
+      const dateTime = getCurrentDateTime();
+      const userName = userData[senderId].name;
+
+      
       const imageUrl = await getImageUrl(event, pageAccessToken);
       if (imageUrl) {
         const imageBase64 = await getImageBase64(imageUrl);
         if (!imageBase64) {
-          await sendMessage(senderId, { text: formatResponse('Erreur : impossible de lire l\'image.') }, pageAccessToken);
+          await sendMessage(senderId, { text: formatResponse('Erreur : image trop lourde ou illisible (max 15Mo)') }, pageAccessToken);
           return;
         }
 
-        const dateTime = getCurrentDateTime();
-        const userName = userData[senderId].name;
-        const history = conversationHistory[senderId].slice(-5).map(msg => `${msg.role}: ${msg.content}`).join('\n');
-        const systemPrompt = buildSystemPrompt(userName, dateTime, history);
-
-        const geminiPayload = {
-          contents: [{
-            parts: [
-              { text: `${systemPrompt}\n\nQuestion sur l'image: ${query}` },
-              { inlineData: { mimeType: 'image/jpeg', data: imageBase64.split(',')[1] } }
-            ]
-          }]
-        };
+        const fullPrompt = `
+        ${buildIdentityContext(userName, dateTime)}
+        ${buildConversationContext(conversationHistory[senderId])}
+        
+        Instruction: Analyse cette image et réponds à: "${query}"
+        Exigences:
+        - Réponse concise (50-100 mots)
+        - Mentionne ton créateur
+        - Utilise la police stylisée
+        `;
 
         const geminiResponse = await axios.post(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key=${GEMINI_API_KEY}`,
-          geminiPayload,
+          `${GEMINI_API_URL}?key=${GEMINI_API_KEY}`,
+          {
+            contents: [{
+              parts: [
+                { text: fullPrompt },
+                { inlineData: { mimeType: 'image/jpeg', data: imageBase64.split(',')[1] } }
+              ]
+            }]
+          },
           { timeout: 60000 }
         );
 
-        const answer = geminiResponse.data.candidates?.[0]?.content?.parts?.[0]?.text || 'Je n\'ai pas pu analyser l\'image.';
-        conversationHistory[senderId].push({ role: 'user', content: query });
-        conversationHistory[senderId].push({ role: 'assistant', content: answer });
+        const rawAnswer = geminiResponse.data.candidates?.[0]?.content?.parts?.[0]?.text || 'Je ne peux pas analyser cette image.';
+        const answer = `Messe IA (par Messie Osango) : ${rawAnswer}`;
+        
+        conversationHistory[senderId].push({ role: 'user', content: `[IMAGE] ${query}` });
+        conversationHistory[senderId].push({ role: 'assistant', content: rawAnswer });
 
         await sendMessage(senderId, { text: formatResponse(answer) }, pageAccessToken);
         return;
       }
 
-      const dateTime = getCurrentDateTime();
-      const userName = userData[senderId].name;
-      const history = conversationHistory[senderId].slice(-5).map(msg => `${msg.role}: ${msg.content}`).join('\n');
-      const systemPrompt = buildSystemPrompt(userName, dateTime, history);
-
+      
       conversationHistory[senderId].push({ role: 'user', content: query });
 
-      const fullPrompt = `${systemPrompt}\n\nDernier message: ${query}\n\nRéponds en français avec la police stylisée:`;
+      const fullPrompt = `
+      ${buildIdentityContext(userName, dateTime)}
+      ${buildConversationContext(conversationHistory[senderId])}
+      
+      Dernier message: "${query}"
+      
+      [INSTRUCTIONS]
+      1. Répondre en français avec police stylisée
+      2. Mentionner "Messe IA créée par Messie Osango" si premier message
+      3. Pour questions sans réponse: "Recherche en cours [sujet]"
+      4. Ton professionnel mais amical
+      5. Maximum 100 mots
+      `;
 
-      const response = await axios.post(
-        'https://api.ia.com/v1/chat',
+  
+      const llamaResponse = await axios.post(
+        'https://uchiha-perdu-ia-five.vercel.app/api',
         { prompt: fullPrompt },
         { timeout: 30000 }
       );
 
-      let answer = response.data.answer || 'Je ne peux pas répondre pour le moment.';
-      answer = answer.includes('Messie Osango') ? answer : `Je suis Messe IA, créée par Messie Osango. ${answer}`;
-      
+      let answer = llamaResponse.data.response || 'Je ne peux pas répondre maintenant.';
+
+    
+      if (answer.startsWith('Recherche en cours')) {
+        const searchTerm = answer.replace('Recherche en cours', '').trim();
+        const searchResponse = await axios.post(
+          'https://uchiha-perdu-search-api.vercel.app/search',
+          { query: searchTerm },
+          { timeout: 30000 }
+        );
+        answer = searchResponse.data.response || `Aucun résultat pour "${searchTerm}"`;
+      }
+
+      if (!conversationHistory[senderId].some(msg => msg.role === 'assistant')) {
+        answer = `Messe IA (créée par Messie Osango) : ${answer}`;
+      }
+
       conversationHistory[senderId].push({ role: 'assistant', content: answer });
-      await sendMessage(senderId, { text: formatResponse(answer) }, pageAccessToken);
+      
+    
+      const chunks = [];
+      const formattedAnswer = formatResponse(answer);
+      for (let i = 0; i < formattedAnswer.length; i += 1900) {
+        chunks.push(formattedAnswer.substring(i, i + 1900));
+      }
+      
+      for (const chunk of chunks) {
+        await sendMessage(senderId, { text: chunk }, pageAccessToken);
+      }
 
     } catch (err) {
       console.error('Erreur:', err);
-      await sendMessage(senderId, { text: formatResponse('Désolé, une erreur est survenue. Messie Osango en a été informé.') }, pageAccessToken);
+      await sendMessage(senderId, { 
+        text: formatResponse('Erreur système - Messie Osango a été notifié') 
+      }, pageAccessToken);
     }
   },
 };
