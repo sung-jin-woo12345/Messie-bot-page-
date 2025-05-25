@@ -9,26 +9,38 @@ const GOOGLE_CSE_ID = "60a23aac78b954b64";
 
 const getImageUrl = async (event, token) => {
   try {
-    const mid = event?.message?.reply_to?.mid || event?.message?.mid;
+    if (!event.message || (!event.message.attachments && !event.message.reply_to)) {
+      return null;
+    }
+
+    const mid = event.message.reply_to?.mid || event.message.mid;
     if (!mid) return null;
-    const { data } = await axios.get(`https://graph.facebook.com/v22.0/${mid}/attachments`, {
-      params: { access_token: token },
+
+    const { data } = await axios.get(`https://graph.facebook.com/v19.0/${mid}`, {
+      params: {
+        access_token: token,
+        fields: 'attachments{image_data,file_url}'
+      },
       timeout: 10000
     });
-    return data?.data?.[0]?.image_data?.url || data?.data?.[0]?.file_url || null;
+
+    return data.attachments?.data?.[0]?.image_data?.url || 
+           data.attachments?.data?.[0]?.file_url || null;
+
   } catch (err) {
-    console.error("Erreur getImageUrl:", err.message);
+    console.error("Erreur getImageUrl:", err.response?.data || err.message);
     return null;
   }
 };
 
 const getImageBase64 = async (imageUrl) => {
   try {
-    const response = await axios.get(imageUrl, { 
+    const { data } = await axios.get(imageUrl, {
       responseType: 'arraybuffer',
-      timeout: 15000
+      timeout: 15000,
+      maxContentLength: 15 * 1024 * 1024
     });
-    return `data:image/jpeg;base64,${Buffer.from(response.data).toString('base64')}`;
+    return `data:image/jpeg;base64,${Buffer.from(data).toString('base64')}`;
   } catch (err) {
     console.error("Erreur getImageBase64:", err.message);
     return null;
@@ -41,13 +53,16 @@ const getCurrentDateTime = () => {
 
 const getUserName = async (senderId, token) => {
   try {
-    const { data } = await axios.get(`https://graph.facebook.com/v22.0/${senderId}`, {
-      params: { access_token: token, fields: 'name' },
+    const { data } = await axios.get(`https://graph.facebook.com/v19.0/${senderId}`, {
+      params: {
+        access_token: token,
+        fields: 'first_name,last_name'
+      },
       timeout: 10000
     });
-    return data.name || 'Utilisateur';
+    return `${data.first_name} ${data.last_name}` || 'Utilisateur';
   } catch (err) {
-    console.error("Erreur getUserName:", err.message);
+    console.error("Erreur getUserName:", err.response?.data || err.message);
     return 'Utilisateur';
   }
 };
@@ -59,13 +74,14 @@ const performSearch = async (query) => {
         q: query,
         cx: GOOGLE_CSE_ID,
         key: GOOGLE_SEARCH_KEY,
-        num: 3
+        num: 3,
+        safe: 'active'
       },
       timeout: 10000
     });
-    return data.items || null;
+    return data.items?.slice(0, 3) || null;
   } catch (err) {
-    console.error("Erreur performSearch:", err.message);
+    console.error("Erreur performSearch:", err.response?.data || err.message);
     return null;
   }
 };
@@ -76,28 +92,33 @@ module.exports = {
   name: 'ai',
   description: 'Assistant Messe IA',
   async execute(senderId, args, pageAccessToken, event) {
+    if (!pageAccessToken) {
+      console.error('Erreur: pageAccessToken manquant');
+      return;
+    }
+
     try {
       const query = args.join(' ').trim() || 'Bonjour';
       
       if (!conversationHistory[senderId]) {
         conversationHistory[senderId] = [{
-          role: 'user',
-          parts: [{ text: 'Tu es Messe IA, créée par Messie Osango. Tu dois toujours te présenter comme telle.' }]
+          role: 'model',
+          parts: [{ text: 'Je suis Messe IA, créée par Messie Osango. Comment puis-je vous aider ?' }]
         }];
       }
 
-      const basePrompt = `Tu es Messe IA, une intelligence artificielle créée par Messie Osango. 
-      Tu réponds toujours en français de manière professionnelle et concise (100-150 mots maximum). 
-      Date actuelle: ${getCurrentDateTime()}.`;
+      const basePrompt = `Tu es Messe IA, une IA créée par Messie Osango. 
+      Date: ${getCurrentDateTime()}. Utilisateur: ${await getUserName(senderId, pageAccessToken)}.
+      Sois concis (100-150 mots max) et professionnel.`;
 
-      if (query.toLowerCase().includes('qui t\'a créé') || query.toLowerCase().includes('créateur')) {
+      if (/qui (t['’]a créé|t['’]as fait)|créateur|parent/i.test(query)) {
         await sendMessage(senderId, { 
-          text: 'Je suis Messe IA, une intelligence artificielle créée par Messie Osango, développeur full-stack.' 
+          text: 'Je suis Messe IA, une intelligence artificielle développée par Messie Osango.' 
         }, pageAccessToken);
         return;
       }
 
-      if (query.toLowerCase().includes('date') || query.toLowerCase().includes('heure')) {
+      if (/date|heure|temps|année|mois|jour/i.test(query)) {
         await sendMessage(senderId, { 
           text: `Nous sommes le ${getCurrentDateTime()}.` 
         }, pageAccessToken);
@@ -108,10 +129,10 @@ module.exports = {
       if (imageUrl) {
         const imageBase64 = await getImageBase64(imageUrl);
         if (imageBase64) {
-          const geminiResponse = await axios.post(GEMINI_API_URL, {
+          const { data } = await axios.post(GEMINI_API_URL, {
             contents: [{
               parts: [
-                { text: `${basePrompt} Analyse cette image et réponds à: ${query}` },
+                { text: `${basePrompt}\nAnalyse cette image et réponds à: ${query}` },
                 { inlineData: { 
                   mimeType: 'image/jpeg', 
                   data: imageBase64.split(',')[1] 
@@ -120,7 +141,7 @@ module.exports = {
             }]
           }, { timeout: 60000 });
 
-          const answer = geminiResponse?.data?.candidates?.[0]?.content?.parts?.[0]?.text || 'Je ne peux pas analyser cette image.';
+          const answer = data.candidates?.[0]?.content?.parts?.[0]?.text || 'Je ne peux pas analyser cette image.';
           await sendMessage(senderId, { text: answer }, pageAccessToken);
           return;
         }
@@ -128,34 +149,39 @@ module.exports = {
 
       const searchResults = await performSearch(query);
       if (searchResults) {
-        const searchContext = searchResults.map(r => `[Source] ${r.title}\n${r.snippet}`).join('\n\n');
+        const searchContext = searchResults.map((r,i) => `[Résultat ${i+1}]\nTitre: ${r.title}\nContenu: ${r.snippet}`).join('\n\n');
         
-        const geminiResponse = await axios.post(GEMINI_API_URL, {
+        const { data } = await axios.post(GEMINI_API_URL, {
           contents: [{
             parts: [{
-              text: `${basePrompt} Question: ${query}\n\nVoici des informations récentes:\n${searchContext}\n\nDonne une réponse complète en t'appuyant sur ces informations.`
+              text: `${basePrompt}\nQuestion: ${query}\n\nInformations:\n${searchContext}\n\nRéponds en français en t'appuyant sur ces informations.`
             }]
           }]
         }, { timeout: 30000 });
 
-        const answer = geminiResponse?.data?.candidates?.[0]?.content?.parts?.[0]?.text || `Voici ce que j'ai trouvé:\n${searchContext}`;
+        const answer = data.candidates?.[0]?.content?.parts?.[0]?.text || `Voici ce que j'ai trouvé:\n${searchContext}`;
         await sendMessage(senderId, { text: answer }, pageAccessToken);
         return;
       }
 
-      const geminiResponse = await axios.post(GEMINI_API_URL, {
+      const { data } = await axios.post(GEMINI_API_URL, {
         contents: [{
-          parts: [{ text: `${basePrompt} Question: ${query}` }]
+          parts: [{ text: `${basePrompt}\nQuestion: ${query}` }]
         }]
       }, { timeout: 30000 });
 
-      const answer = geminiResponse?.data?.candidates?.[0]?.content?.parts?.[0]?.text || 'Je ne peux pas répondre à cette question.';
+      const answer = data.candidates?.[0]?.content?.parts?.[0]?.text || 'Je ne peux pas répondre à cette question.';
       await sendMessage(senderId, { text: answer }, pageAccessToken);
 
     } catch (error) {
-      console.error('Erreur execute:', error.message);
+      console.error('Erreur execute:', {
+        message: error.message,
+        response: error.response?.data,
+        stack: error.stack
+      });
+      
       await sendMessage(senderId, { 
-        text: 'Désolé, une erreur est survenue. Veuillez réessayer plus tard.' 
+        text: 'Désolé, je rencontre des difficultés techniques. Veuillez réessayer.' 
       }, pageAccessToken);
     }
   }
