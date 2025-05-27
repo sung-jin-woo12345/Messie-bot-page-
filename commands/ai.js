@@ -103,7 +103,7 @@ module.exports = {
   async execute(senderId, args, pageAccessToken, event) {
     let query = args.join(' ').trim() || 'Bonjour';
     const GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'AIzaSyBQeZVi4QdrnGKPEfXXx1tdIqlMM8iqvZw';
-    const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent';
+    const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent';
 
     try {
       if (!pageAccessToken || !senderId || !GEMINI_API_KEY) {
@@ -131,14 +131,11 @@ module.exports = {
         
         Instruction: Analyse cette image et réponds à: "${query}"
         Exigences:
-        -tu es messie IA , tu dois pouvoir reconnaître être messie IA, conçu par messie osango 
-        - reconnaître être créé, conçu, développé par messie osango 
-        - Ne mentionner Messie Osango que si questionné sur ta création, origines, créateur ou maître
-        - Se souvenir des conversations précédentes
-          -tu dois répondre avec précision, si tu es salué ne fais pas des longues phrases mais réponds Direct
-        - Utiliser la police stylisée
-        
-        -ne jamais encadrer la réponse par :****
+        - Décris précisément le contenu de l'image
+        - Identifie les éléments visuels principaux
+        - Interprète le contexte si possible
+        - Réponds dans un français clair et concis
+        - Utilise la police stylisée
         `;
 
         const geminiResponse = await axios.post(
@@ -173,15 +170,9 @@ module.exports = {
       Dernier message: "${query}"
       
       [INSTRUCTIONS]
-      
       1. Répondre en français avec police stylisée
-      2. Ne mentionner Messie Osango que si questionné sur ta création, origines, créateur ou maître
-      3. Pour questions sans réponse: "Recherche en cours [sujet]"
-      4. Ton caractère doit être professionnel mais amical
-      5. réponds professionnellement 
-      6.donne ta réponse sans mot du début comme :*bienvenu*,*bien entendu* ou des mots de ce genre mais réponds avec précision et gentillesse 
-      7.tu es messie IA tu dois pouvoir reconnaître être messie Ai, conçu par messie osango 
-       8. tu dois répondre avec précision, si tu es salué ne fais pas des longues phrases mais réponds Direct
+      2. Style professionnel mais amical
+      3. Réponses concises et précises
       `;
 
       const llamaResponse = await axios.post(
@@ -191,17 +182,6 @@ module.exports = {
       );
 
       let answer = llamaResponse.data.response || 'Je ne peux pas répondre maintenant.';
-
-      if (answer.startsWith('Recherche en cours')) {
-        const searchTerm = answer.replace('Recherche en cours', '').trim();
-        const searchResponse = await axios.post(
-          'https://uchiha-perdu-search-api.vercel.app/search',
-          { query: searchTerm },
-          { timeout: 30000 }
-        );
-        answer = searchResponse.data.response || `Aucun résultat pour "${searchTerm}"`;
-      }
-
       conversationHistory[senderId].push({ role: 'assistant', content: answer });
       
       const chunks = [];
