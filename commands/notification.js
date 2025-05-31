@@ -4,7 +4,7 @@ const axios = require('axios');
 const { sendMessage } = require('../handles/sendMessage');
 
 const usersFilePath = path.join(__dirname, 'users.json');
-const authorizedUid = 'uid_not_found_or_not_work';
+const authorizedUid = 'uid_not_found_or_not_work'; 
 
 const loadUsers = () => {
   if (fs.existsSync(usersFilePath)) {
@@ -36,18 +36,18 @@ module.exports = {
   author: 'Messie Osango',
   async execute(senderId, args, pageAccessToken) {
     if (senderId !== authorizedUid) {
-      await sendMessage(senderId, { text: '𝙰𝚑 𝚍'𝚊𝚌𝚌𝚘𝚛𝚍 ! 𝚃𝚞 𝚟𝚎𝚞𝚡 𝚞𝚝𝚒𝚕𝚒𝚜𝚎𝚛 𝚌𝚎𝚝𝚝𝚎 𝚌𝚘𝚖𝚖𝚊𝚗𝚍𝚎 ? 𝚁𝚎𝚟𝚒𝚎𝚗𝚜 𝚕'𝚞𝚝𝚒𝚕𝚒𝚜𝚎𝚛 𝚚𝚞𝚊𝚗𝚍 𝚝𝚞 𝚜𝚎𝚛𝚊𝚜 𝚙𝚊𝚛𝚝𝚊𝚗𝚝 𝚙𝚘𝚞𝚛 𝚕𝚊  𝚖𝚊𝚒𝚝𝚛𝚒𝚜𝚎 𝚍𝚞 𝚌𝚘𝚍𝚎. 𝙴𝚗𝚏𝚕𝚞𝚛𝚎..' }, pageAccessToken);
+      await sendMessage(senderId, { text: "Ah d'accord ! Tu veux utiliser cette commande ? Reviens l'utiliser quand tu seras partant pour la maitrise du code. Enflure.." }, pageAccessToken);
       return;
     }
     if (args.length === 0) {
-      await sendMessage(senderId, { text: '𝚂𝙿𝙴𝙲𝙸𝙵𝙸𝙴 𝚄𝙽 𝙼𝙴𝚂𝚂𝙰𝙶𝙴. 𝚄𝚂𝙰𝙶𝙴: 𝚗𝚘𝚝𝚒𝚏𝚒𝚌𝚊𝚝𝚒𝚘𝚗 <𝚖𝚎𝚜𝚜𝚊𝚐𝚎>' }, pageAccessToken);
+      await sendMessage(senderId, { text: 'SPECIFIE UN MESSAGE. USAGE: notification <message>' }, pageAccessToken);
       return;
     }
     const message = args.join(' ').trim();
     const notificationText = `
-𝗡𝗢𝗧𝗜𝗙𝗜𝗖𝗔𝗧𝗜𝗢𝗡
+NOTIFICATION
 ━━━━━━━━━━━━━━
-╭💬-𝗠𝗘𝗦𝗦𝗔𝗚𝗘: 
+╭💬-MESSAGE: 
 ╰┈➤ ${message}
 ━━━━━━━━━━━━━━
    
@@ -59,7 +59,7 @@ module.exports = {
       saveUsers(activeUsers);
     }
     if (users.length === 0) {
-      await sendMessage(senderId, { text: '𝙰𝚄𝙲𝚄𝙽 𝚄𝚃𝙸𝙻𝙸𝚂𝙰𝚃𝙴𝚄𝚁 𝚃𝚁𝙾𝚄𝚅𝙴. 𝙽𝙾𝚃𝙸𝙵𝙸𝙲𝙰𝚃𝙸𝙾𝙽 𝙽𝙾𝙽 𝙴𝙽𝚅𝙾𝚈𝙴𝙴.' }, pageAccessToken);
+      await sendMessage(senderId, { text: 'AUCUN UTILISATEUR TROUVE. NOTIFICATION NON ENVOYEE.' }, pageAccessToken);
       return;
     }
     const success = [];
