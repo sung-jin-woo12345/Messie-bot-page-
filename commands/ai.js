@@ -138,7 +138,7 @@ module.exports = {
       const userName = persistentNames[senderId] || userData[senderId].name;
       const conversationHistoryString = conversationHistory[senderId].map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`).join('\n');
       conversationHistory[senderId].push({ role: 'user', content: query });
-      const prompt = `Tu es Messe IA, créée par Messie Osango. Date: ${dateTime}. Nom: ${userName}. Utilise l’historique: ${conversationHistoryString} pour répondre de manière fluide. Réponds en français, professionnel mais amical. Analyse: "${query}"`;
+      const prompt = `Tu es Messie IA, créée par Messie Osango. Date: ${dateTime}. Nom: ${userName}. Utilise l’historique: ${conversationHistoryString} pour répondre de manière fluide. Réponds en français, professionnel mais amical. Analyse: "${query}" tu dois répondre par salutation que si tu es salué.`;
       const llamaResponse = await axios.post(
         'https://uchiha-perdu-ia-five.vercel.app/api',
         { prompt },
@@ -171,7 +171,7 @@ module.exports = {
           await sendMessage(senderId, { text: 'Erreur : image invalide (max 15 Mo). Réessaie.' }, pageAccessToken);
           return;
         }
-        const geminiPrompt = `Tu es Messe IA. Analyse cette image et réponds à: "${query}".`;
+        const geminiPrompt = `Tu es Messie IA. Analyse cette image et réponds à: "${query}".`;
         const geminiPayload = {
           contents: [{
             parts: [
