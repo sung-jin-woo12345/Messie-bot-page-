@@ -91,7 +91,7 @@ const userData = {};
 const persistentNames = {};
 
 const extractName = (query, senderId) => {
-  const namePatterns = [/je m['’]appelle\s+([A-Za-zÀ-ÿ\s]+)/i, /je me nomme\s+([A-Za-zÀ-ÿ\s]+)/i];
+  const namePatterns = [/je m['']appelle\s+([A-Za-zÀ-ÿ\s]+)/i, /je me nomme\s+([A-Za-zÀ-ÿ\s]+)/i];
   for (const pattern of namePatterns) {
     const match = query.match(pattern);
     if (match && match[1]) {
@@ -110,66 +110,54 @@ module.exports = {
   author: 'Messie Osango',
   async execute(senderId, args, pageAccessToken, event) {
     let query = args.join(' ').trim() || 'Hello';
-    const GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'AIzaSyDVOtXtSag-ggdYL62eo4pLZjSwpJ9npcY';
-    const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+    const API_URL = 'https://messie-api-ia.vercel.app/chat?prompt=';
+    const API_KEY = 'messie12356osango2025jinWoo';
+    
     try {
       if (!pageAccessToken) {
-        await sendMessage(senderId, { text: 'Erreur : token d’accès manquant. Contacte Messie Osango.' }, process.env.PAGE_ACCESS_TOKEN || pageAccessToken);
+        await sendMessage(senderId, { text: 'Erreur : token d\'accès manquant. Contacte Messie Osango.' }, process.env.PAGE_ACCESS_TOKEN || pageAccessToken);
         return;
       }
       if (!senderId) {
         await sendMessage(senderId, { text: 'Erreur : ID utilisateur manquant.' }, pageAccessToken);
         return;
       }
-      if (!GEMINI_API_KEY) {
-        await sendMessage(senderId, { text: 'Erreur : clé API Gemini manquante. Contacte Messie Osango.' }, pageAccessToken);
-        return;
-      }
+
       if (!conversationHistory[senderId]) conversationHistory[senderId] = [];
       if (!userData[senderId]) userData[senderId] = { name: await getUserName(senderId, pageAccessToken) };
+      
       if (!persistentNames[senderId]) {
         const extractedName = extractName(query, senderId);
         if (extractedName) userData[senderId].name = extractedName;
       }
+
       const historyString = conversationHistory[senderId].map(msg => `${msg.role}: ${msg.content}`).join('\n');
       const historyTokens = estimateTokens(historyString);
       if (historyTokens > 10000) conversationHistory[senderId] = [];
-      const dateTime = getCurrentDateTime();
-      const userName = persistentNames[senderId] || userData[senderId].name;
-      const conversationHistoryString = conversationHistory[senderId].map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`).join('\n');
+
       conversationHistory[senderId].push({ role: 'user', content: query });
-      const prompt = `Tu es Messe IA, créée par Messie Osango. Date: ${dateTime}. Nom: ${userName}. Utilise l’historique: ${conversationHistoryString} pour répondre de manière fluide. Réponds en français, professionnel mais amical. Analyse: "${query}".
 
-1. Si salutation ou vague (ex. "salut"), réponds directement.
-2. Si question claire avec données internes (pré-2025), réponds précisément. Pour l’heure, utilise fuseaux (Japon JST, France CEST).
-3. Si données post-2025 ou inconnues, renvoie "Recherche en cours ${query}".
-
-Pas de recherche web initiale.`;
-      const llamaResponse = await axios.post(
-        'https://uchiha-perdu-ia-five.vercel.app/api',
-        { prompt },
-        { headers: { 'Content-Type': 'application/json' }, timeout: 30000 }
-      );
-      let answer = llamaResponse.data.response || 'Erreur : pas de réponse.';
-      if (answer.startsWith('Recherche en cours')) {
-        const searchResponse = await axios.post(
-          'https://uchiha-perdu-search-api.vercel.app/search',
-          { query },
-          { headers: { 'Content-Type': 'application/json' }, timeout: 30000 }
-        );
-        answer = searchResponse.data.response || 'Aucun résultat.';
-      }
+      const response = await axios.get(`${API_URL}${encodeURIComponent(query)}`, {
+        headers: { 'Authorization': API_KEY },
+        timeout: 30000
+      });
+      
+      let answer = response.data?.response || 'Désolé, je n\'ai pas pu traiter votre demande.';
       answer = applyMarkdown(answer);
+      
       conversationHistory[senderId].push({ role: 'assistant', content: answer });
+      
       const chunkMessage = (message, maxLength) => {
         const chunks = [];
         for (let i = 0; i < message.length; i += maxLength) chunks.push(message.slice(i, i + maxLength));
         return chunks;
       };
+
       const messageChunks = chunkMessage(answer, 1900);
       for (const chunk of messageChunks) {
         await sendMessage(senderId, { text: chunk }, pageAccessToken);
       }
+
       const imageUrl = await getImageUrl(event);
       if (imageUrl) {
         const imageData = await getImageBase64(imageUrl);
@@ -177,34 +165,20 @@ Pas de recherche web initiale.`;
           await sendMessage(senderId, { text: 'Erreur : image invalide (max 15 Mo). Réessaie.' }, pageAccessToken);
           return;
         }
-        const geminiPrompt = `Tu es Messe IA. Analyse cette image et réponds à: "${query}".`;
-        const geminiPayload = {
-          contents: [{
-            parts: [
-              { text: geminiPrompt },
-              { inline_data: { mime_type: imageData.mimeType, data: imageData.base64 } }
-            ]
-          }]
-        };
-        let geminiResponse;
-        for (let attempt = 0; attempt < 2; attempt++) {
-          try {
-            geminiResponse = await axios.post(
-              GEMINI_API_URL,
-              geminiPayload,
-              { headers: { 'Content-Type': 'application/json' }, params: { key: GEMINI_API_KEY }, timeout: 60000 }
-            );
-            break;
-          } catch (err) {
-            if (attempt === 1) {
-              await sendMessage(senderId, { text: 'Erreur : analyse image échouée. Réessaie.' }, pageAccessToken);
-              return;
-            }
-          }
-        }
-        const answer = geminiResponse?.data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || 'Erreur image.';
+
+        const imageResponse = await axios.get(`${API_URL}${encodeURIComponent(query)}&image=true`, {
+          headers: { 
+            'Authorization': API_KEY,
+            'Content-Type': 'application/json'
+          },
+          data: { image: imageData.base64 },
+          timeout: 60000
+        });
+
+        const answer = imageResponse.data?.response || 'Erreur lors de l\'analyse de l\'image.';
         conversationHistory[senderId].push({ role: 'user', content: query });
         conversationHistory[senderId].push({ role: 'assistant', content: answer });
+        
         const formattedAnswer = applyMarkdown(answer);
         const messageChunks = chunkMessage(formattedAnswer, 1900);
         for (const chunk of messageChunks) {
