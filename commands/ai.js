@@ -30,7 +30,6 @@ const getImageUrl = async (event, token) => {
     });
     return data?.data?.[0]?.image_data?.url || data?.data?.[0]?.file_url || null;
   } catch (err) {
-    console.error("Erreur récupération URL image:", err?.response?.data || err.message); 
     return null;
   }
 };
@@ -44,7 +43,6 @@ const getImageBase64 = async (imageUrl) => {
     const base64 = Buffer.from(response.data).toString('base64');
     return `data:image/jpeg;base64,${base64}`;
   } catch (err) {
-    console.error("Erreur conversion image base64:", err.message); 
     return null;
   }
 };
@@ -60,38 +58,14 @@ const getUserName = async (senderId, pageAccessToken) => {
       params: { access_token: pageAccessToken, fields: 'name' },
       timeout: 10000 
     });
-    return data.name || 'Utilisateur ';
+    return data.name || 'Utilisateur';
   } catch (err) {
-    console.error("Erreur récupération nom user:", err?.response?.data || err.message); 
     return 'Utilisateur anonyme';
   }
 };
 
 const conversationHistory = {};
 const userData = {};
-
-const buildIdentityContext = (userName, dateTime) => {
-  return `
-  [DIRECTIVES PRINCIPALES]
-  1. Ne mentionner Messie Osango que si questionné sur ta création, origines, créateur ou maître
-  2. Se souvenir des conversations précédentes
-  3. Conserver le contexte de la conversation
-  4. Style: Professionnel mais amical, en français
-  .5 ne jamais répondre en encadrent la réponse ou un mot par :*****. A moins que se soit nécessaire 
-  6. pouvoir extraire les informations sur une image envoyée par l'utilisateur et en tirer des conclusions 
-  
-  `;
-};
-
-const buildConversationContext = (history) => {
-  if (history.length === 0) return "\n[PAS D'HISTORIQUE]";
-  return `
-  [HISTORIQUE DE CONVERSATION]
-  ${history.slice(-3).map((msg, i) => 
-    `${msg.role === 'user' ? 'UTILISATEUR' : 'MESSE IA'}: ${msg.content}`
-  ).join('\n')}
-  `;
-};
 
 module.exports = {
   name: 'ai',
@@ -100,12 +74,12 @@ module.exports = {
   author: 'Messie Osango',
   async execute(senderId, args, pageAccessToken, event) {
     let query = args.join(' ').trim() || 'Bonjour';
-    const GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'AIzaSyBQeZVi4QdrnGKPEfXXx1tdIqlMM8iqvZw';
-    const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent';
+    const API_URL = 'https://messie-api-ia.vercel.app/chat?prompt=';
+    const API_KEY = 'messie12356osango2025jinWoo';
 
     try {
-      if (!pageAccessToken || !senderId || !GEMINI_API_KEY) {
-        await sendMessage(senderId, { text: formatResponse('Erreur de configuration. Contactez Messie Osango.') }, pageAccessToken);
+      if (!pageAccessToken || !senderId) {
+        await sendMessage(senderId, { text: formatResponse('Erreur de configuration') }, pageAccessToken);
         return;
       }
 
@@ -119,43 +93,19 @@ module.exports = {
       if (imageUrl) {
         const imageBase64 = await getImageBase64(imageUrl);
         if (!imageBase64) {
-          await sendMessage(senderId, { text: formatResponse('Erreur : image trop lourde ou illisible (max 15Mo)') }, pageAccessToken);
+          await sendMessage(senderId, { text: formatResponse('Erreur : image trop lourde') }, pageAccessToken);
           return;
         }
 
-        const fullPrompt = `
-        ${buildIdentityContext(userName, dateTime)}
-        ${buildConversationContext(conversationHistory[senderId])}
-        
-        Instruction: Analyse cette image et réponds à: "${query}"
-        Exigences:
-        - reconnaître être créé, conçu, développé par messie osango 
-        - Ne mentionner Messie Osango que si questionné sur ta création, origines, créateur ou maître
-        - Se souvenir des conversations précédentes
-        - Répondre avec précision et professionnellement
-        - Utiliser la police stylisée
-        
-        -ne jamais encadrer la réponse par :****
-        `;
+        const response = await axios.get(`${API_URL}${encodeURIComponent(query)}&image=true`, {
+          headers: { 'Authorization': API_KEY },
+          data: { image: imageBase64.split(',')[1] },
+          timeout: 60000
+        });
 
-        const geminiResponse = await axios.post(
-          `${GEMINI_API_URL}?key=${GEMINI_API_KEY}`,
-          {
-            contents: [{
-              parts: [
-                { text: fullPrompt },
-                { inlineData: { mimeType: 'image/jpeg', data: imageBase64.split(',')[1] } }
-              ]
-            }]
-          },
-          { timeout: 60000 }
-        );
-
-        const rawAnswer = geminiResponse.data.candidates?.[0]?.content?.parts?.[0]?.text || 'Je ne peux pas analyser cette image.';
-        const answer = rawAnswer;
-        
+        const answer = response.data?.response || 'Je ne peux pas analyser cette image.';
         conversationHistory[senderId].push({ role: 'user', content: `[IMAGE] ${query}` });
-        conversationHistory[senderId].push({ role: 'assistant', content: rawAnswer });
+        conversationHistory[senderId].push({ role: 'assistant', content: answer });
 
         await sendMessage(senderId, { text: formatResponse(answer) }, pageAccessToken);
         return;
@@ -163,40 +113,12 @@ module.exports = {
 
       conversationHistory[senderId].push({ role: 'user', content: query });
 
-      const fullPrompt = `
-      ${buildIdentityContext(userName, dateTime)}
-      ${buildConversationContext(conversationHistory[senderId])}
-      
-      Dernier message: "${query}"
-      
-      [INSTRUCTIONS]
-      1. Répondre en français avec police stylisée
-      2. Ne mentionner Messie Osango que si questionné sur ta création, origines, créateur ou maître
-      3. Pour questions sans réponse: "Recherche en cours [sujet]"
-      4. Ton professionnel mais amical
-      5. réponds professionnellement 
-      6.donne ta réponse sans mot du début comme :*bienvenu*,*bien entendu* ou des mots de ce genre mais réponds avec précision et gentillesse 
-      7. les nombres de tes mots dépendent de la question,si elle est simple ta réponse doit être avec moins de 50 mots 
-      `;
+      const response = await axios.get(`${API_URL}${encodeURIComponent(query)}`, {
+        headers: { 'Authorization': API_KEY },
+        timeout: 30000
+      });
 
-      const llamaResponse = await axios.post(
-        'https://uchiha-perdu-ia-five.vercel.app/api',
-        { prompt: fullPrompt },
-        { timeout: 30000 }
-      );
-
-      let answer = llamaResponse.data.response || 'Je ne peux pas répondre maintenant.';
-
-      if (answer.startsWith('Recherche en cours')) {
-        const searchTerm = answer.replace('Recherche en cours', '').trim();
-        const searchResponse = await axios.post(
-          'https://uchiha-perdu-search-api.vercel.app/search',
-          { query: searchTerm },
-          { timeout: 30000 }
-        );
-        answer = searchResponse.data.response || `Aucun résultat pour "${searchTerm}"`;
-      }
-
+      let answer = response.data?.response || 'Je ne peux pas répondre maintenant.';
       conversationHistory[senderId].push({ role: 'assistant', content: answer });
       
       const chunks = [];
@@ -210,9 +132,8 @@ module.exports = {
       }
 
     } catch (err) {
-      console.error('Erreur:', err);
       await sendMessage(senderId, { 
-        text: formatResponse('Erreur système - Messie Osango a été notifié') 
+        text: formatResponse('Erreur système') 
       }, pageAccessToken);
     }
   },
