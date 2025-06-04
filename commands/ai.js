@@ -2,182 +2,147 @@ const axios = require('axios');
 const moment = require('moment-timezone');
 const { sendMessage } = require('../handles/sendMessage');
 
+const API_CONFIG = {
+  BASE_URL: 'https://messie-api-ia.vercel.app/chat',
+  API_KEY: 'messie12356osango2025jinWoo',
+  TIMEOUT: 20000
+};
+
+const MAX_RETRIES = 2;
+const MAX_IMAGE_SIZE = 15 * 1024 * 1024;
+const MESSAGE_CHUNK_SIZE = 1900;
+
 const getImageUrl = async (event) => {
   try {
-    if (!event || !event.message || !event.message.attachments || !event.message.attachments[0]) return null;
-    const attachment = event.message.attachments[0];
-    if (attachment.type !== 'image' || !attachment.payload || !attachment.payload.url) return null;
-    return attachment.payload.url;
-  } catch (err) {
+    const attachment = event?.message?.attachments?.[0];
+    return attachment?.type === 'image' ? attachment.payload?.url : null;
+  } catch {
     return null;
   }
 };
 
 const getImageBase64 = async (imageUrl) => {
   try {
-    const headResponse = await axios.head(imageUrl, { timeout: 5000 });
-    const contentLength = parseInt(headResponse.headers['content-length'] || '0', 10);
-    if (contentLength > 15 * 1024 * 1024) return null;
-    const response = await axios.get(imageUrl, { responseType: 'arraybuffer', timeout: 15000 });
-    const base64 = Buffer.from(response.data, 'binary').toString('base64');
-    return { base64, mimeType: 'image/jpeg' };
-  } catch (err) {
+    const head = await axios.head(imageUrl, { timeout: 5000 });
+    const size = parseInt(head.headers['content-length']) || 0;
+    if (size > MAX_IMAGE_SIZE) return null;
+    
+    const { data } = await axios.get(imageUrl, { 
+      responseType: 'arraybuffer', 
+      timeout: 15000 
+    });
+    return {
+      base64: Buffer.from(data).toString('base64'),
+      mimeType: 'image/jpeg'
+    };
+  } catch {
     return null;
   }
 };
 
-const getCurrentDateTime = (timezone = 'Africa/Lagos') => {
-  const dt = moment().tz(timezone);
-  return `${dt.format('DD MMMM YYYY, HH:mm')} ${dt.zoneAbbr()}`;
-};
-
-const getUserName = async (senderId, pageAccessToken) => {
+const getUserName = async (senderId, token) => {
   try {
     const { data } = await axios.get(`https://graph.facebook.com/v22.0/${senderId}`, {
-      params: { access_token: pageAccessToken, fields: 'name' },
+      params: { access_token: token, fields: 'name' },
       timeout: 10000
     });
-    return data.name || 'Utilisateur anonyme';
-  } catch (err) {
-    return 'Utilisateur anonyme';
+    return data.name || 'Utilisateur';
+  } catch {
+    return 'Utilisateur';
   }
 };
 
-const normalToBold = {
-  'A': '𝗔', 'B': '𝗕', 'C': '𝗖', 'D': '𝗗', 'E': '𝗘', 'F': '𝗙', 'G': '𝗚', 'H': '𝗛', 'I': '𝗜', 'J': '𝗝', 'K': '𝗞', 'L': '𝗟', 'M': '𝗠', 'N': '𝗡', 'O': '𝗢', 'P': '𝗣', 'Q': '𝗤', 'R': '𝗥', 'S': '𝗦', 'T': '𝗧', 'U': '𝗨', 'V': '𝗩', 'W': '𝗪', 'X': '𝗫', 'Y': '𝗬', 'Z': '𝗭',
-  'a': '𝗮', 'b': '𝗯', 'c': '𝗰', 'd': '𝗱', 'e': '𝗲', 'f': '𝗳', 'g': '𝗴', 'h': '𝗵', 'i': '𝗶', 'j': '𝗷', 'k': '𝗸', 'l': '𝗹', 'm': '𝗺', 'n': '𝗻', 'o': '𝗼', 'p': '𝗽', 'q': '𝗾', 'r': '𝗿', 's': '𝘀', 't': '𝘁', 'u': '𝘂', 'v': '𝘃', 'w': '𝘄', 'x': '𝘅', 'y': '𝘆', 'z': '𝘇'
-};
-
-const normalToItalic = {
-  'A': '𝑨', 'B': '𝑩', 'C': '𝑪', 'D': '𝑫', 'E': '𝑬', 'F': '𝑭', 'G': '𝑮', 'H': '𝑯', 'I': '𝑰', 'J': '𝑱', 'K': '𝑲', 'L': '𝑳', 'M': '𝑴', 'N': '𝑵', 'O': '𝑶', 'P': '𝑷', 'Q': '𝑸', 'R': '𝑹', 'S': '𝑺', 'T': '𝑻', 'U': '𝑼', 'V': '𝑽', 'W': '𝑾', 'X': '𝑿', 'Y': '𝒀', 'Z': '𝒁',
-  'a': '𝒂', 'b': '𝒃', 'c': '𝒄', 'd': '𝒅', 'e': '𝒆', 'f': '𝒇', 'g': '𝒈', 'h': '𝒉', 'i': '𝒊', 'j': '𝒋', 'k': '𝒌', 'l': '𝒍', 'm': '𝒎', 'n': '𝒏', 'o': '𝒐', 'p': '𝒑', 'q': '𝒒', 'r': '𝒓', 's': '𝒔', 't': '𝒕', 'u': '𝒖', 'v': '𝒗', 'w': '𝒘', 'x': '𝒙', 'y': '𝒚', 'z': '𝒛'
-};
-
-const normalToStrike = {
-  'A': '𝘼', 'B': '𝘽', 'C': '𝘾', 'D': '𝘿', 'E': '𝙀', 'F': '𝙁', 'G': '𝙂', 'H': '𝙃', 'I': '𝙄', 'J': '𝙅',
-  'K': '𝙆', 'L': '𝙇', 'M': '𝙈', 'N': '𝙉', 'O': '𝙊', 'P': '𝙋', 'Q': '𝙌', 'R': '𝙍', 'S': '𝙎', 'T': '𝙏',
-  'U': '𝙐', 'V': '𝙑', 'W': '𝙒', 'X': '𝙓', 'Y': '𝙔', 'Z': '𝙕',
-  'a': '𝙖', 'b': '𝙗', 'c': '𝙘', 'd': '𝙙', 'e': '𝙚', 'f': '𝙛', 'g': '𝙜', 'h': '𝙝', 'i': '𝙞', 'j': '𝙟',
-  'k': '𝙠', 'l': '𝙡', 'm': '𝙢', 'n': '𝙣', 'o': '𝙤', 'p': '𝙥', 'q': '𝙦', 'r': '𝙧', 's': '𝙨', 't': '𝙩',
-  'u': '𝙪', 'v': '𝙫', 'w': '𝙬', 'x': '𝙭', 'y': '𝙮', 'z': '𝙯'
+const markdownMaps = {
+  bold: Object.fromEntries('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('').map(c => [c, `𝗕𝗼𝗹𝗱${c}`])),
+  italic: Object.fromEntries('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('').map(c => [c, `𝑖𝑡𝑎𝑙𝑖𝑐${c}`])),
+  strike: Object.fromEntries('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('').map(c => [c, `̶s̶t̶r̶i̶k̶e̶${c}`]))
 };
 
 const applyMarkdown = (text) => {
-  let transformed = text;
-  transformed = transformed.replace(/\*\*(.*?)\*\*/g, (match, p1) => p1.split('').map(char => normalToBold[char] || char).join(''));
-  transformed = transformed.replace(/\*(.*?)(?:\s|$)/g, (match, p1) => p1.split('').map(char => normalToItalic[char] || char).join('') + ' ');
-  transformed = transformed.replace(/_(.*?)_/g, (match, p1) => p1.split('').map(char => normalToItalic[char] || char).join(''));
-  transformed = transformed.replace(/~~(.*?)~~/g, (match, p1) => p1.split('').map(char => normalToStrike[char] || char).join(''));
-  transformed = transformed.replace(/^>\s(.*)$/gm, (match, p1) => `➤ ${p1.split('').map(char => normalToBold[char] || char).join('')}`);
-  return transformed;
-};
-
-const estimateTokens = (text) => {
-  return Math.ceil(text.length / 4);
+  return text
+    .replace(/\*\*(.*?)\*\*/g, (_, p1) => p1.split('').map(c => markdownMaps.bold[c] || c).join(''))
+    .replace(/\*(.*?)\*/g, (_, p1) => p1.split('').map(c => markdownMaps.italic[c] || c).join(''))
+    .replace(/~~(.*?)~~/g, (_, p1) => p1.split('').map(c => markdownMaps.strike[c] || c).join(''));
 };
 
 const conversationHistory = {};
-const userData = {};
-const persistentNames = {};
+const userNames = {};
 
-const extractName = (query, senderId) => {
-  const namePatterns = [/je m['']appelle\s+([A-Za-zÀ-ÿ\s]+)/i, /je me nomme\s+([A-Za-zÀ-ÿ\s]+)/i];
-  for (const pattern of namePatterns) {
-    const match = query.match(pattern);
-    if (match && match[1]) {
-      const name = match[1].trim();
-      persistentNames[senderId] = name;
-      return name;
+async function callAPI(prompt, isImage = false, imageData = null) {
+  const params = new URLSearchParams({ prompt });
+  if (isImage) params.append('image', 'true');
+  
+  const config = {
+    headers: { 'Authorization': API_CONFIG.API_KEY },
+    params,
+    timeout: API_CONFIG.TIMEOUT
+  };
+
+  if (isImage) {
+    config.headers['Content-Type'] = 'application/json';
+    config.data = { image: imageData };
+  }
+
+  for (let i = 0; i < MAX_RETRIES; i++) {
+    try {
+      const { data } = await axios.get(API_CONFIG.BASE_URL, config);
+      return data?.response || "Je n'ai pas pu traiter votre demande";
+    } catch (error) {
+      if (i === MAX_RETRIES - 1) throw error;
+      await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
     }
   }
-  return null;
-};
+}
+
+async function sendChunkedMessages(senderId, text, token) {
+  const chunks = [];
+  for (let i = 0; i < text.length; i += MESSAGE_CHUNK_SIZE) {
+    chunks.push(text.slice(i, i + MESSAGE_CHUNK_SIZE));
+  }
+  
+  for (const chunk of chunks) {
+    await sendMessage(senderId, { text: chunk }, token);
+  }
+}
 
 module.exports = {
   name: 'ai',
-  description: 'Interagir avec Messe IA',
-  usage: 'Pose une question ou réponds à une image',
+  description: 'Assistant intelligent Messe IA',
+  usage: 'Posez votre question',
   author: 'Messie Osango',
-  async execute(senderId, args, pageAccessToken, event) {
-    let query = args.join(' ').trim() || 'Hello';
-    const API_URL = 'https://messie-api-ia.vercel.app/chat';
-    const API_KEY = 'messie12356osango2025jinWoo';
-    
+  async execute(senderId, args, token, event) {
     try {
-      if (!pageAccessToken) {
-        await sendMessage(senderId, { text: 'Erreur : token manquant' }, process.env.PAGE_ACCESS_TOKEN || pageAccessToken);
-        return;
-      }
-
-      if (!conversationHistory[senderId]) conversationHistory[senderId] = [];
-      if (!userData[senderId]) userData[senderId] = { name: await getUserName(senderId, pageAccessToken) };
+      const query = args.join(' ').trim() || 'Bonjour';
       
-      if (!persistentNames[senderId]) {
-        const extractedName = extractName(query, senderId);
-        if (extractedName) userData[senderId].name = extractedName;
+      if (!conversationHistory[senderId]) {
+        conversationHistory[senderId] = [];
+        userNames[senderId] = await getUserName(senderId, token);
       }
-
-      const historyTokens = estimateTokens(conversationHistory[senderId].map(msg => `${msg.role}: ${msg.content}`).join('\n'));
-      if (historyTokens > 10000) conversationHistory[senderId] = [];
 
       conversationHistory[senderId].push({ role: 'user', content: query });
-
-      const params = new URLSearchParams();
-      params.append('prompt', query);
-      
-      const response = await axios.get(API_URL, {
-        headers: { 'Authorization': API_KEY },
-        params: params,
-        timeout: 15000
-      });
-      
-      let answer = response.data?.response || 'Désolé, je ne peux pas répondre maintenant';
-      answer = applyMarkdown(answer);
-      
-      conversationHistory[senderId].push({ role: 'assistant', content: answer });
-      
-      const chunkMessage = (message, maxLength) => {
-        const chunks = [];
-        for (let i = 0; i < message.length; i += maxLength) chunks.push(message.slice(i, i + maxLength));
-        return chunks;
-      };
-
-      const messageChunks = chunkMessage(answer, 1900);
-      for (const chunk of messageChunks) {
-        await sendMessage(senderId, { text: chunk }, pageAccessToken);
+      if (conversationHistory[senderId].length > 20) {
+        conversationHistory[senderId] = conversationHistory[senderId].slice(-10);
       }
+
+      const response = await callAPI(query);
+      const formattedResponse = applyMarkdown(response);
+      
+      conversationHistory[senderId].push({ role: 'assistant', content: response });
+      await sendChunkedMessages(senderId, formattedResponse, token);
 
       const imageUrl = await getImageUrl(event);
       if (imageUrl) {
         const imageData = await getImageBase64(imageUrl);
-        if (!imageData) {
-          await sendMessage(senderId, { text: 'Erreur : image trop volumineuse' }, pageAccessToken);
-          return;
-        }
-
-        params.append('image', 'true');
-        const imageResponse = await axios.get(API_URL, {
-          headers: { 
-            'Authorization': API_KEY,
-            'Content-Type': 'application/json'
-          },
-          params: params,
-          data: { image: imageData.base64 },
-          timeout: 30000
-        });
-
-        const imageAnswer = imageResponse.data?.response || 'Erreur d\'analyse d\'image';
-        conversationHistory[senderId].push({ role: 'user', content: query });
-        conversationHistory[senderId].push({ role: 'assistant', content: imageAnswer });
-        
-        const formattedAnswer = applyMarkdown(imageAnswer);
-        const imageChunks = chunkMessage(formattedAnswer, 1900);
-        for (const chunk of imageChunks) {
-          await sendMessage(senderId, { text: chunk }, pageAccessToken);
+        if (imageData) {
+          const imageResponse = await callAPI(query, true, imageData.base64);
+          const formattedImageResponse = applyMarkdown(imageResponse);
+          await sendChunkedMessages(senderId, formattedImageResponse, token);
         }
       }
-    } catch (err) {
-      await sendMessage(senderId, { text: 'Erreur technique' }, pageAccessToken);
+    } catch (error) {
+      await sendMessage(senderId, { 
+        text: 'Désolé, je rencontre des difficultés techniques. Veuillez réessayer plus tard.'
+      }, token);
     }
-  },
+  }
 };
