@@ -62,22 +62,12 @@ const normalToStrike = {
   'u': '𝙪', 'v': '𝙫', 'w': '𝙬', 'x': '𝙭', 'y': '𝙮', 'z': '𝙯'
 };
 
-const normalToLink = {
-  'A': '𝙰', 'B': '𝙱', 'C': '𝙲', 'D': '𝙳', 'E': '𝙴', 'F': '𝙵', 'G': '𝙶', 'H': '𝙷', 'I': '𝙸', 'J': '𝙹',
-  'K': '𝙺', 'L': '𝙻', 'M': '𝙼', 'N': '𝙽', 'O': '𝙾', 'P': '𝙿', 'Q': '𝚀', 'R': '𝚁', 'S': '𝚂', 'T': '𝚃',
-  'U': '𝚄', 'V': '𝚅', 'W': '𝚆', 'X': '𝚇', 'Y': '𝚈', 'Z': '𝚉',
-  'a': '𝚊', 'b': '𝚋', 'c': '𝚌', 'd': '𝚍', 'e': '𝚎', 'f': '𝚏', 'g': '𝚐', 'h': '𝚑', 'i': '𝚒', 'j': '𝚓',
-  'k': '𝚔', 'l': '𝚕', 'm': '𝚖', 'n': '𝚗', 'o': '𝚘', 'p': '𝚙', 'q': '𝚚', 'r': '𝚛', 's': '𝚜', 't': '𝚝',
-  'u': '𝚞', 'v': '𝚟', 'w': '𝚠', 'x': '𝚡', 'y': '𝚢', 'z': '𝚣'
-};
-
 const applyMarkdown = (text) => {
   let transformed = text;
   transformed = transformed.replace(/\*\*(.*?)\*\*/g, (match, p1) => p1.split('').map(char => normalToBold[char] || char).join(''));
   transformed = transformed.replace(/\*(.*?)(?:\s|$)/g, (match, p1) => p1.split('').map(char => normalToItalic[char] || char).join('') + ' ');
   transformed = transformed.replace(/_(.*?)_/g, (match, p1) => p1.split('').map(char => normalToItalic[char] || char).join(''));
   transformed = transformed.replace(/~~(.*?)~~/g, (match, p1) => p1.split('').map(char => normalToStrike[char] || char).join(''));
-  transformed = transformed.replace(/\[(.*?)\]/g, (match, p1) => p1.split('').map(char => normalToLink[char] || char).join(''));
   transformed = transformed.replace(/^>\s(.*)$/gm, (match, p1) => `➤ ${p1.split('').map(char => normalToBold[char] || char).join('')}`);
   return transformed;
 };
@@ -105,21 +95,17 @@ const extractName = (query, senderId) => {
 
 module.exports = {
   name: 'ai',
-  description: 'Interagir avec Messe IA via des questions textuelles ou des images',
-  usage: 'Pose une question ou réponds à une image avec une question.',
+  description: 'Interagir avec Messe IA',
+  usage: 'Pose une question ou réponds à une image',
   author: 'Messie Osango',
   async execute(senderId, args, pageAccessToken, event) {
     let query = args.join(' ').trim() || 'Hello';
-    const API_URL = 'https://messie-api-ia.vercel.app/chat?prompt=';
+    const API_URL = 'https://messie-api-ia.vercel.app/chat';
     const API_KEY = 'messie12356osango2025jinWoo';
     
     try {
       if (!pageAccessToken) {
-        await sendMessage(senderId, { text: 'Erreur : token d\'accès manquant. Contacte Messie Osango.' }, process.env.PAGE_ACCESS_TOKEN || pageAccessToken);
-        return;
-      }
-      if (!senderId) {
-        await sendMessage(senderId, { text: 'Erreur : ID utilisateur manquant.' }, pageAccessToken);
+        await sendMessage(senderId, { text: 'Erreur : token manquant' }, process.env.PAGE_ACCESS_TOKEN || pageAccessToken);
         return;
       }
 
@@ -131,18 +117,21 @@ module.exports = {
         if (extractedName) userData[senderId].name = extractedName;
       }
 
-      const historyString = conversationHistory[senderId].map(msg => `${msg.role}: ${msg.content}`).join('\n');
-      const historyTokens = estimateTokens(historyString);
+      const historyTokens = estimateTokens(conversationHistory[senderId].map(msg => `${msg.role}: ${msg.content}`).join('\n'));
       if (historyTokens > 10000) conversationHistory[senderId] = [];
 
       conversationHistory[senderId].push({ role: 'user', content: query });
 
-      const response = await axios.get(`${API_URL}${encodeURIComponent(query)}`, {
+      const params = new URLSearchParams();
+      params.append('prompt', query);
+      
+      const response = await axios.get(API_URL, {
         headers: { 'Authorization': API_KEY },
-        timeout: 30000
+        params: params,
+        timeout: 15000
       });
       
-      let answer = response.data?.response || 'Désolé, je n\'ai pas pu traiter votre demande.';
+      let answer = response.data?.response || 'Désolé, je ne peux pas répondre maintenant';
       answer = applyMarkdown(answer);
       
       conversationHistory[senderId].push({ role: 'assistant', content: answer });
@@ -162,31 +151,33 @@ module.exports = {
       if (imageUrl) {
         const imageData = await getImageBase64(imageUrl);
         if (!imageData) {
-          await sendMessage(senderId, { text: 'Erreur : image invalide (max 15 Mo). Réessaie.' }, pageAccessToken);
+          await sendMessage(senderId, { text: 'Erreur : image trop volumineuse' }, pageAccessToken);
           return;
         }
 
-        const imageResponse = await axios.get(`${API_URL}${encodeURIComponent(query)}&image=true`, {
+        params.append('image', 'true');
+        const imageResponse = await axios.get(API_URL, {
           headers: { 
             'Authorization': API_KEY,
             'Content-Type': 'application/json'
           },
+          params: params,
           data: { image: imageData.base64 },
-          timeout: 60000
+          timeout: 30000
         });
 
-        const answer = imageResponse.data?.response || 'Erreur lors de l\'analyse de l\'image.';
+        const imageAnswer = imageResponse.data?.response || 'Erreur d\'analyse d\'image';
         conversationHistory[senderId].push({ role: 'user', content: query });
-        conversationHistory[senderId].push({ role: 'assistant', content: answer });
+        conversationHistory[senderId].push({ role: 'assistant', content: imageAnswer });
         
-        const formattedAnswer = applyMarkdown(answer);
-        const messageChunks = chunkMessage(formattedAnswer, 1900);
-        for (const chunk of messageChunks) {
+        const formattedAnswer = applyMarkdown(imageAnswer);
+        const imageChunks = chunkMessage(formattedAnswer, 1900);
+        for (const chunk of imageChunks) {
           await sendMessage(senderId, { text: chunk }, pageAccessToken);
         }
       }
     } catch (err) {
-      await sendMessage(senderId, { text: 'Erreur serveur. Contacte Messie Osango.' }, pageAccessToken);
+      await sendMessage(senderId, { text: 'Erreur technique' }, pageAccessToken);
     }
   },
 };
