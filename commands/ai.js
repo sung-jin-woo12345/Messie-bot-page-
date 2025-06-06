@@ -1,10 +1,9 @@
 const axios = require('axios');
-const moment = require('moment-timezone');
 const { sendMessage } = require('../handles/sendMessage');
 
 const formatResponse = (text) => {
   const charMap = {
-    'A': '𝘈', 'B': '𝘉', 'C': '𝘊', 'D': '𝘋', 'E': '𝘌', 
+    'A': '𝘈', 'B': '𝘉', 'C': '𝘊', 'D': '𝘋', 'E': '𝘌',
     'F': '𝘍', 'G': '𝘎', 'H': '𝘏', 'I': '𝘐', 'J': '𝘑',
     'K': '𝘒', 'L': '𝘓', 'M': '𝘔', 'N': '𝘕', 'O': '𝘖',
     'P': '𝘗', 'Q': '𝘘', 'R': '𝘙', 'S': '𝘚', 'T': '𝘛',
@@ -20,100 +19,40 @@ const formatResponse = (text) => {
   return text.split('').map(char => charMap[char] || char).join('');
 };
 
-const getImageUrl = async (event, token) => {
-  try {
-    const mid = event?.message?.reply_to?.mid || event?.message?.mid;
-    if (!mid) return null;
-    
-    const { data } = await axios.get(`https://graph.facebook.com/v22.0/${mid}/attachments`, {
-      params: { access_token: token },
-      timeout: 10000
-    });
-    
-    return data?.data?.[0]?.image_data?.url || data?.data?.[0]?.file_url || null;
-  } catch (error) {
-    console.error('Erreur getImageUrl:', error.message);
-    return null;
-  }
-};
-
-const getImageBase64 = async (imageUrl) => {
-  try {
-    const response = await axios.get(imageUrl, {
-      responseType: 'arraybuffer',
-      timeout: 15000,
-      maxContentLength: 15 * 1024 * 1024
-    });
-    
-    return `data:image/jpeg;base64,${Buffer.from(response.data).toString('base64')}`;
-  } catch (error) {
-    console.error('Erreur getImageBase64:', error.message);
-    return null;
-  }
-};
-
 module.exports = {
   name: 'ai',
   description: 'Assistant intelligent',
-  usage: 'Posez votre question ou envoyez une image',
+  usage: 'Posez votre question',
   author: 'Messie Osango',
   async execute(senderId, args, pageAccessToken, event) {
     try {
       const query = args.join(' ').trim() || 'Bonjour';
       const API_URL = 'https://messie-api-ia.vercel.app/chat';
-      const API_KEY = 'messie12356osango2025jinWoo';
+      const API_KEY = process.env.API_KEY || 'messie12356osango2025jinWoo';
 
-      if (!pageAccessToken || !senderId) {
-        await sendMessage(senderId, { text: formatResponse('Configuration invalide') }, pageAccessToken);
-        return;
+      if (!pageAccessToken) {
+        throw new Error('Token de page manquant');
       }
 
-      const imageUrl = await getImageUrl(event, pageAccessToken);
-      if (imageUrl) {
-        const imageBase64 = await getImageBase64(imageUrl);
-        if (!imageBase64) {
-          await sendMessage(senderId, { text: formatResponse('Image invalide ou trop lourde') }, pageAccessToken);
-          return;
-        }
+      const response = await axios.post(API_URL, {
+        prompt: query
+      }, {
+        headers: {
+          'Authorization': `Bearer ${API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 30000
+      });
 
-        const response = await axios.post(
-          `${API_URL}?prompt=${encodeURIComponent(query)}&image=true`,
-          { image: imageBase64.split(',')[1] },
-          { headers: { 'Authorization': API_KEY }, timeout: 60000 }
-        );
-
-        const answer = response.data?.response || 'Je ne peux pas analyser cette image.';
-        await sendMessage(senderId, { text: formatResponse(answer) }, pageAccessToken);
-        return;
-      }
-
-      const response = await axios.get(
-        `${API_URL}?prompt=${encodeURIComponent(query)}`,
-        { headers: { 'Authorization': API_KEY }, timeout: 30000 }
-      );
-
-      const answer = response.data?.response || 'Je ne peux pas répondre maintenant.';
-      const formattedAnswer = formatResponse(answer);
-      
-      for (let i = 0; i < formattedAnswer.length; i += 1900) {
-        await sendMessage(senderId, { 
-          text: formattedAnswer.substring(i, i + 1900) 
-        }, pageAccessToken);
-      }
+      const answer = response.data?.response || 'Pas de réponse';
+      await sendMessage(senderId, { text: formatResponse(answer) }, pageAccessToken);
 
     } catch (error) {
-      console.error('Erreur execute:', error.response?.data || error.message);
       let errorMessage = 'Erreur système';
-      
-      if (error.code === 'ECONNABORTED') {
-        errorMessage = 'Temps de réponse dépassé';
-      } else if (error.response?.status === 401) {
-        errorMessage = 'Erreur d\'authentification';
+      if (error.response?.status === 401) {
+        errorMessage = 'Erreur d\'authentification API';
       }
-      
-      await sendMessage(senderId, { 
-        text: formatResponse(errorMessage) 
-      }, pageAccessToken);
+      await sendMessage(senderId, { text: formatResponse(errorMessage) }, pageAccessToken);
     }
   }
 };
