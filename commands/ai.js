@@ -38,8 +38,8 @@ const getImageBase64 = async (imageUrl) => {
   try {
     const headResponse = await axios.head(imageUrl, { timeout: 5000 });
     const contentLength = parseInt(headResponse.headers['content-length'] || '0', 10);
-    if (contentLength > 15 * 1024 * 1024) return null; 
-    const response = await axios.get(imageUrl, { responseType: 'arraybuffer', timeout: 15000 }); 
+    if (contentLength > 15 * 1024 * 1024) return null;
+    const response = await axios.get(imageUrl, { responseType: 'arraybuffer', timeout: 15000 });
     const base64 = Buffer.from(response.data).toString('base64');
     return `data:image/jpeg;base64,${base64}`;
   } catch (err) {
