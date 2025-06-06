@@ -21,120 +21,99 @@ const formatResponse = (text) => {
 };
 
 const getImageUrl = async (event, token) => {
-  const mid = event?.message?.reply_to?.mid || event?.message?.mid;
-  if (!mid) return null;
   try {
+    const mid = event?.message?.reply_to?.mid || event?.message?.mid;
+    if (!mid) return null;
+    
     const { data } = await axios.get(`https://graph.facebook.com/v22.0/${mid}/attachments`, {
       params: { access_token: token },
-      timeout: 10000 
+      timeout: 10000
     });
+    
     return data?.data?.[0]?.image_data?.url || data?.data?.[0]?.file_url || null;
-  } catch (err) {
+  } catch (error) {
+    console.error('Erreur getImageUrl:', error.message);
     return null;
   }
 };
 
 const getImageBase64 = async (imageUrl) => {
   try {
-    const headResponse = await axios.head(imageUrl, { timeout: 5000 });
-    const contentLength = parseInt(headResponse.headers['content-length'] || '0', 10);
-    if (contentLength > 15 * 1024 * 1024) return null;
-    const response = await axios.get(imageUrl, { responseType: 'arraybuffer', timeout: 15000 });
-    const base64 = Buffer.from(response.data).toString('base64');
-    return `data:image/jpeg;base64,${base64}`;
-  } catch (err) {
+    const response = await axios.get(imageUrl, {
+      responseType: 'arraybuffer',
+      timeout: 15000,
+      maxContentLength: 15 * 1024 * 1024
+    });
+    
+    return `data:image/jpeg;base64,${Buffer.from(response.data).toString('base64')}`;
+  } catch (error) {
+    console.error('Erreur getImageBase64:', error.message);
     return null;
   }
 };
 
-const getCurrentDateTime = (timezone = 'Africa/Lagos') => {
-  const dt = moment().tz(timezone);
-  return `${dt.format('DD MMMM YYYY, HH:mm')} ${dt.zoneAbbr()}`;
-};
-
-const getUserName = async (senderId, pageAccessToken) => {
-  try {
-    const { data } = await axios.get(`https://graph.facebook.com/v22.0/${senderId}`, {
-      params: { access_token: pageAccessToken, fields: 'name' },
-      timeout: 10000 
-    });
-    return data.name || 'Utilisateur';
-  } catch (err) {
-    return 'Utilisateur anonyme';
-  }
-};
-
-const conversationHistory = {};
-const userData = {};
-
 module.exports = {
   name: 'ai',
-  description: 'mon bot page',
+  description: 'Assistant intelligent',
   usage: 'Posez votre question ou envoyez une image',
   author: 'Messie Osango',
   async execute(senderId, args, pageAccessToken, event) {
-    let query = args.join(' ').trim() || 'Bonjour';
-    const API_URL = 'https://messie-api-ia.vercel.app/chat?prompt=';
-    const API_KEY = 'messie12356osango2025jinWoo';
-
     try {
+      const query = args.join(' ').trim() || 'Bonjour';
+      const API_URL = 'https://messie-api-ia.vercel.app/chat';
+      const API_KEY = 'messie12356osango2025jinWoo';
+
       if (!pageAccessToken || !senderId) {
-        await sendMessage(senderId, { text: formatResponse('Erreur de configuration') }, pageAccessToken);
+        await sendMessage(senderId, { text: formatResponse('Configuration invalide') }, pageAccessToken);
         return;
       }
-
-      if (!conversationHistory[senderId]) conversationHistory[senderId] = [];
-      if (!userData[senderId]) userData[senderId] = { name: await getUserName(senderId, pageAccessToken) };
-
-      const dateTime = getCurrentDateTime();
-      const userName = userData[senderId].name;
 
       const imageUrl = await getImageUrl(event, pageAccessToken);
       if (imageUrl) {
         const imageBase64 = await getImageBase64(imageUrl);
         if (!imageBase64) {
-          await sendMessage(senderId, { text: formatResponse('Erreur : image trop lourde') }, pageAccessToken);
+          await sendMessage(senderId, { text: formatResponse('Image invalide ou trop lourde') }, pageAccessToken);
           return;
         }
 
-        const response = await axios.get(`${API_URL}${encodeURIComponent(query)}&image=true`, {
-          headers: { 'Authorization': API_KEY },
-          data: { image: imageBase64.split(',')[1] },
-          timeout: 60000
-        });
+        const response = await axios.post(
+          `${API_URL}?prompt=${encodeURIComponent(query)}&image=true`,
+          { image: imageBase64.split(',')[1] },
+          { headers: { 'Authorization': API_KEY }, timeout: 60000 }
+        );
 
         const answer = response.data?.response || 'Je ne peux pas analyser cette image.';
-        conversationHistory[senderId].push({ role: 'user', content: `[IMAGE] ${query}` });
-        conversationHistory[senderId].push({ role: 'assistant', content: answer });
-
         await sendMessage(senderId, { text: formatResponse(answer) }, pageAccessToken);
         return;
       }
 
-      conversationHistory[senderId].push({ role: 'user', content: query });
+      const response = await axios.get(
+        `${API_URL}?prompt=${encodeURIComponent(query)}`,
+        { headers: { 'Authorization': API_KEY }, timeout: 30000 }
+      );
 
-      const response = await axios.get(`${API_URL}${encodeURIComponent(query)}`, {
-        headers: { 'Authorization': API_KEY },
-        timeout: 30000
-      });
-
-      let answer = response.data?.response || 'Je ne peux pas répondre maintenant.';
-      conversationHistory[senderId].push({ role: 'assistant', content: answer });
-      
-      const chunks = [];
+      const answer = response.data?.response || 'Je ne peux pas répondre maintenant.';
       const formattedAnswer = formatResponse(answer);
-      for (let i = 0; i < formattedAnswer.length; i += 1900) {
-        chunks.push(formattedAnswer.substring(i, i + 1900));
-      }
       
-      for (const chunk of chunks) {
-        await sendMessage(senderId, { text: chunk }, pageAccessToken);
+      for (let i = 0; i < formattedAnswer.length; i += 1900) {
+        await sendMessage(senderId, { 
+          text: formattedAnswer.substring(i, i + 1900) 
+        }, pageAccessToken);
       }
 
-    } catch (err) {
+    } catch (error) {
+      console.error('Erreur execute:', error.response?.data || error.message);
+      let errorMessage = 'Erreur système';
+      
+      if (error.code === 'ECONNABORTED') {
+        errorMessage = 'Temps de réponse dépassé';
+      } else if (error.response?.status === 401) {
+        errorMessage = 'Erreur d\'authentification';
+      }
+      
       await sendMessage(senderId, { 
-        text: formatResponse('Erreur système') 
+        text: formatResponse(errorMessage) 
       }, pageAccessToken);
     }
-  },
+  }
 };
